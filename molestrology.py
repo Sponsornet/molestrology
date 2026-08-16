@@ -3,6 +3,7 @@ import base64
 import logging
 from io import BytesIO
 from datetime import datetime
+
 import aiohttp
 import filetype
 from PIL import Image
@@ -26,6 +27,7 @@ WEBHOOK_URL    = os.environ.get("WEBHOOK_URL", "").strip()
 MAX_TTS_LENGTH    = 1000
 MAX_IMAGE_SIZE_MB = 5
 
+
 def get_mime_type(image_bytes: bytes) -> str:
     kind = filetype.guess(image_bytes)
     if kind and kind.mime.startswith("image/"):
@@ -38,6 +40,7 @@ def get_mime_type(image_bytes: bytes) -> str:
         pass
     return "image/jpeg"
 
+
 def truncate_for_tts(text: str, max_length: int = MAX_TTS_LENGTH) -> str:
     if len(text) <= max_length:
         return text
@@ -45,6 +48,7 @@ def truncate_for_tts(text: str, max_length: int = MAX_TTS_LENGTH) -> str:
     if last_period > 0:
         return text[:last_period + 1]
     return text[:max_length] + "..."
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
@@ -55,6 +59,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🔮 Welcome to Molestrology!\n\nChoose your language:",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
+
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -72,6 +77,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "I will find a star map and tell you what it means right now! ✨"
         )
 
+
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = context.user_data.get("language", "en")
     text = (
@@ -80,6 +86,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "⚠️ Please send a *photo* of your moles."
     )
     await update.message.reply_text(text)
+
 
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -145,7 +152,7 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         prompt = prompt_en if lang == "en" else prompt_ua
 
-        url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
 
         payload = {
             "contents": [{
@@ -199,10 +206,12 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         await processing_msg.edit_text(error_text)
 
+
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.error(msg="Exception:", exc_info=context.error)
     if update and update.effective_message:
         await update.effective_message.reply_text("⚠️ Error. Please try /start.")
+
 
 def main():
     if not TELEGRAM_TOKEN:
@@ -235,6 +244,7 @@ def main():
             application.run_polling()
     else:
         application.run_polling()
+
 
 if __name__ == "__main__":
     main()
