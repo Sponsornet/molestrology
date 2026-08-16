@@ -3,7 +3,6 @@ import base64
 import logging
 from io import BytesIO
 from datetime import datetime
-
 import aiohttp
 import filetype
 from PIL import Image
