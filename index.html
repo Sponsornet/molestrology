@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="ua">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Molestrology Oracle</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    body {
+      background: #0f0c1b;
+      color: #fff;
+      font-family: 'Georgia', serif;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      overflow: hidden;
+    }
+    .container {
+      text-align: center;
+      width: 90%;
+      max-width: 400px;
+    }
+    .canvas-wrapper {
+      position: relative;
+      width: 100%;
+      border-radius: 20px;
+      overflow: hidden;
+      box-shadow: 0 0 25px rgba(157, 78, 221, 0.4);
+    }
+    canvas {
+      width: 100%;
+      display: block;
+    }
+    .btn {
+      background: linear-gradient(135deg, #7b2cbf, #9d4edd);
+      color: white;
+      border: none;
+      padding: 15px 30px;
+      font-size: 18px;
+      border-radius: 30px;
+      margin-top: 20px;
+      cursor: pointer;
+      box-shadow: 0 4px 15px rgba(123, 44, 191, 0.5);
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h2>✨ Таємниця Твоїх Зорей ✨</h2>
+  
+  <div class="canvas-wrapper">
+    <canvas id="photoCanvas"></canvas>
+  </div>
+
+  <input type="file" id="photoInput" accept="image/*" style="display:none;">
+  <button class="btn" onclick="document.getElementById('photoInput').click()">Завантажити фото</button>
+</div>
+
+<script>
+  const tg = window.Telegram.WebApp;
+  tg.expand();
+
+  const canvas = document.getElementById('photoCanvas');
+  const ctx = canvas.getContext('2d');
+  const photoInput = document.getElementById('photoInput');
+
+  photoInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const img = new Image();
+    img.onload = () => {
+      canvas.width = img.width;
+      canvas.height = img.height;
+      ctx.drawImage(img, 0, 0);
+      
+      startStarAnimation();
+    };
+    img.src = URL.createObjectURL(file);
+  });
+
+  function startStarAnimation() {
+    ctx.fillStyle = 'rgba(15, 12, 27, 0.4)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    let step = 0;
+    const points = [
+      {x: canvas.width * 0.3, y: canvas.height * 0.4},
+      {x: canvas.width * 0.5, y: canvas.height * 0.3},
+      {x: canvas.width * 0.7, y: canvas.height * 0.5}
+    ];
+
+    const interval = setInterval(() => {
+      if (step >= points.length) {
+        clearInterval(interval);
+        return;
+      }
+
+      const p = points[step];
+      
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 8, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffea00';
+      ctx.shadowBlur = 15;
+      ctx.shadowColor = '#ffea00';
+      ctx.fill();
+
+      if (step > 0) {
+        const prev = points[step - 1];
+        ctx.beginPath();
+        ctx.moveTo(prev.x, prev.y);
+        ctx.lineTo(p.x, p.y);
+        ctx.strokeStyle = 'rgba(255, 234, 0, 0.8)';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+      }
+
+      step++;
+    }, 600);
+  }
+</script>
+</body>
+</html>
