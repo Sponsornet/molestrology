@@ -140,7 +140,7 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
 
         # Используем официальную модель
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-2.0-flash")
         
         response = model.generate_content(
             contents=[prompt, image_part],
