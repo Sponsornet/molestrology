@@ -1,12 +1,9 @@
 import os
-import base64
 import logging
 from io import BytesIO
 from datetime import datetime
 
-import aiohttp
-import filetype
-from PIL import Image
+import google.generativeai as genai
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
@@ -24,21 +21,11 @@ TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "").strip()
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 WEBHOOK_URL    = os.environ.get("WEBHOOK_URL", "").strip()
 
-MAX_TTS_LENGTH    = 1000
-MAX_IMAGE_SIZE_MB = 5
+MAX_TTS_LENGTH = 1000
 
-
-def get_mime_type(image_bytes: bytes) -> str:
-    kind = filetype.guess(image_bytes)
-    if kind and kind.mime.startswith("image/"):
-        return kind.mime
-    try:
-        with Image.open(BytesIO(image_bytes)) as img:
-            if img.format:
-                return f"image/{img.format.lower()}"
-    except Exception:
-        pass
-    return "image/jpeg"
+# Инициализация Gemini API через официальный SDK
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
 
 
 def truncate_for_tts(text: str, max_length: int = MAX_TTS_LENGTH) -> str:
@@ -89,7 +76,6 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
     lang = context.user_data.get("language", "en")
 
     if "language" not in context.user_data:
@@ -104,19 +90,6 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         photo_file = await update.message.photo[-1].get_file()
         photo_bytes = await photo_file.download_as_bytearray()
         photo_bytes = bytes(photo_bytes)
-
-        size_mb = len(photo_bytes) / (1024 * 1024)
-        if size_mb > MAX_IMAGE_SIZE_MB:
-            error_text = (
-                f"❌ Photo too large ({size_mb:.1f} MB). Max {MAX_IMAGE_SIZE_MB} MB."
-                if lang == "en" else
-                f"❌ Фото занадто велике ({size_mb:.1f} МБ). Макс {MAX_IMAGE_SIZE_MB} МБ."
-            )
-            await processing_msg.edit_text(error_text)
-            return
-
-        mime_type = get_mime_type(photo_bytes)
-        image_base64 = base64.b64encode(photo_bytes).decode("utf-8")
 
         now = datetime.now()
         month_name_en = now.strftime("%B")
@@ -152,37 +125,29 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         prompt = prompt_en if lang == "en" else prompt_ua
 
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
-
-        payload = {
-            "contents": [{
-                "parts": [
-                    {"text": prompt},
-                    {
-                        "inline_data": {
-                            "mime_type": mime_type,
-                            "data": image_base64
-                        }
-                    }
-                ]
-            }],
-            "generationConfig": {
-                "maxOutputTokens": 400,
-                "temperature": 0.7
-            }
+        # Подготовка фото для библиотеки SDK
+        image_part = {
+            "mime_type": "image/jpeg",
+            "data": photo_bytes
         }
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=30)) as resp:
-                resp.raise_for_status()
-                data = await resp.json()
+        # Отключение строгих фильтров (чтобы фото кожи не блокировались)
+        safety_settings = [
+            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+        ]
 
-        candidates = data.get("candidates", [])
-        if not candidates:
-            block_reason = data.get("promptFeedback", {}).get("blockReason", "Unknown")
-            raise Exception(f"Content blocked by Gemini: {block_reason}")
+        # Используем официальную модель
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        
+        response = model.generate_content(
+            contents=[prompt, image_part],
+            safety_settings=safety_settings
+        )
 
-        text = candidates[0]["content"]["parts"][0]["text"].strip()
+        text = response.text.strip()
         text = text.replace("**", "").replace("*", "").replace("## ", "").replace("# ", "")
         text = text.replace("1. ", "").replace("2. ", "").replace("3. ", "").replace("4. ", "")
         text = text.replace("• ", "").replace("- ", "").strip()
