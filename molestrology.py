@@ -41,7 +41,6 @@ def truncate_for_tts(text: str, max_length: int = MAX_TTS_LENGTH) -> str:
 
 async def generate_soft_voice(text: str, lang: str) -> BytesIO:
     """Генерация мягкого женского голоса (Светлана)"""
-    # ru-RU-SvetlanaNeural — это очень естественный мягкий голос
     voice = "ru-RU-SvetlanaNeural" if lang == "ru" else "en-US-AvaNeural"
     tts_text = truncate_for_tts(text)
     
@@ -56,7 +55,6 @@ async def generate_soft_voice(text: str, lang: str) -> BytesIO:
     return voice_buffer
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Клавиатура с кнопкой Mini App
     keyboard = [
         [InlineKeyboardButton("🔮 Открыть Оракул (Mini App)", web_app=WebAppInfo(url=MINI_APP_URL))],
         [InlineKeyboardButton("🇷🇺 Русский", callback_data="lang_ru"),
@@ -96,9 +94,6 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         photo_file = await update.message.photo[-1].get_file()
         photo_bytes = await photo_file.download_as_bytearray()
         
-        now = datetime.now()
-        month_name = "май" if lang == "ru" else "May"
-        
         prompt = (
             f"Ты — загадочный звездный оракул. На фото тела человека видны родинки. "
             f"Отвечай ОДНИМ коротким абзацем (макс. 120 слов), увлекательно, мистически. "
@@ -116,14 +111,13 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         image_part = {"mime_type": "image/jpeg", "data": bytes(photo_bytes)}
-        model = genai.GenerativeModel("gemini-1.5-flash") # Используем актуальную модель
+        model = genai.GenerativeModel("gemini-1.5-flash")
         
         response = model.generate_content([prompt, image_part])
         text = response.text.strip()
 
         await processing_msg.edit_text(text)
         
-        # Озвучка новым голосом
         voice_buffer = await generate_soft_voice(text, lang)
         await update.message.reply_voice(voice=voice_buffer)
 
