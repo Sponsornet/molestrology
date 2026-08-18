@@ -11,11 +11,9 @@ from aiohttp import web
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import Application, CommandHandler, ContextTypes
 
-# Логування
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Змінні середовища
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "").strip()
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 WEBHOOK_URL    = os.environ.get("WEBHOOK_URL", "").strip()
@@ -26,21 +24,19 @@ MINI_APP_URL = "https://Sponsornet.github.io/molestrology/"
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 
-# Ініціалізація Telegram Bot Application
 ptb_app = Application.builder().token(TELEGRAM_TOKEN).build()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [[InlineKeyboardButton("🔮 Відкрити Оракул (Mini App)", web_app=WebAppInfo(url=MINI_APP_URL))]]
     await update.message.reply_text(
         "🔮 **Ласкаво просимо до Molestrology!**\n\n"
-        "Натисніть кнопку нижче, щоб відкрити Mini App та дізнатися таємницю своїх зорей.",
+        "Натисніть кнопку нижче, щоб відкрити Mini App.",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown"
     )
 
 ptb_app.add_handler(CommandHandler("start", start))
 
-# Генерація голосу
 async def generate_soft_voice(text: str, lang: str = "uk") -> BytesIO:
     voices = {"uk": "uk-UA-PolinaNeural", "ru": "ru-RU-SvetlanaNeural", "en": "en-US-AvaNeural"}
     voice = voices.get(lang, "uk-UA-PolinaNeural")
@@ -52,7 +48,16 @@ async def generate_soft_voice(text: str, lang: str = "uk") -> BytesIO:
     voice_buffer.seek(0)
     return voice_buffer
 
-# Обробка запиту від Mini App
+# Заголовки CORS
+CORS_HEADERS = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+}
+
+async def handle_options(request):
+    return web.Response(status=200, headers=CORS_HEADERS)
+
 async def handle_api_process(request):
     try:
         reader = await request.multipart()
@@ -68,7 +73,6 @@ async def handle_api_process(request):
         clean_text = response.text.replace("```json", "").replace("```", "").strip()
         data = json.loads(clean_text)
 
-        # Малювання сузір'їв
         img = Image.open(BytesIO(photo_bytes)).convert("RGB")
         draw = ImageDraw.Draw(img)
         w, h = img.size
@@ -85,7 +89,6 @@ async def handle_api_process(request):
         img.save(out_img, format="JPEG")
         img_b64 = base64.b64encode(out_img.getvalue()).decode('utf-8')
 
-        # Генерація голосу
         audio_b64 = ""
         try:
             voice_buf = await generate_soft_voice(data.get("text", ""), "uk")
@@ -98,11 +101,11 @@ async def handle_api_process(request):
             "text": data.get("text", ""),
             "image": img_b64,
             "audio": audio_b64
-        }, headers={"Access-Control-Allow-Origin": "*"})
+        }, headers=CORS_HEADERS)
     except Exception as e:
-        return web.json_response({"error": str(e)}, status=500, headers={"Access-Control-Allow-Origin": "*"})
+        logger.error(f"API Error: {e}")
+        return web.json_response({"error": str(e)}, status=500, headers=CORS_HEADERS)
 
-# Обробник вебхуків Telegram
 async def handle_telegram_webhook(request):
     data = await request.json()
     await ptb_app.process_update(Update.de_json(data, ptb_app.bot))
@@ -113,7 +116,6 @@ async def on_startup(app):
     await ptb_app.start()
     if WEBHOOK_URL:
         await ptb_app.bot.set_webhook(url=f"{WEBHOOK_URL.rstrip('/')}/webhook")
-    logger.info("Бот успішно ініціалізовано!")
 
 async def on_cleanup(app):
     await ptb_app.stop()
@@ -121,6 +123,7 @@ async def on_cleanup(app):
 
 def main():
     app = web.Application()
+    app.router.add_options("/api/process", handle_options)
     app.router.add_post("/api/process", handle_api_process)
     app.router.add_post("/webhook", handle_telegram_webhook)
     
