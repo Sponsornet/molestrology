@@ -1,7 +1,6 @@
 import os
 import logging
 from io import BytesIO
-from datetime import datetime
 
 import google.generativeai as genai
 import edge_tts
@@ -23,9 +22,7 @@ TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "").strip()
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 WEBHOOK_URL    = os.environ.get("WEBHOOK_URL", "").strip()
 
-# ВАША ССЫЛКА НА MINI APP
 MINI_APP_URL = "https://Sponsornet.github.io/molestrology/"
-
 MAX_TTS_LENGTH = 1000
 
 if GEMINI_API_KEY:
@@ -40,8 +37,13 @@ def truncate_for_tts(text: str, max_length: int = MAX_TTS_LENGTH) -> str:
     return text[:max_length] + "..."
 
 async def generate_soft_voice(text: str, lang: str) -> BytesIO:
-    """Генерация мягкого женского голоса (Светлана)"""
-    voice = "ru-RU-SvetlanaNeural" if lang == "ru" else "en-US-AvaNeural"
+    """Генерация мягкого женского голоса с поддержкой UA, RU, EN"""
+    voices = {
+        "uk": "uk-UA-PolinaNeural",
+        "ru": "ru-RU-SvetlanaNeural",
+        "en": "en-US-AvaNeural"
+    }
+    voice = voices.get(lang, "uk-UA-PolinaNeural")
     tts_text = truncate_for_tts(text)
     
     communicate = edge_tts.Communicate(tts_text, voice)
@@ -56,14 +58,17 @@ async def generate_soft_voice(text: str, lang: str) -> BytesIO:
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
-        [InlineKeyboardButton("🔮 Открыть Оракул (Mini App)", web_app=WebAppInfo(url=MINI_APP_URL))],
-        [InlineKeyboardButton("🇷🇺 Русский", callback_data="lang_ru"),
-         InlineKeyboardButton("🇬🇧 English", callback_data="lang_en")]
+        [InlineKeyboardButton("🔮 Відкрити Оракул (Mini App)", web_app=WebAppInfo(url=MINI_APP_URL))],
+        [
+            InlineKeyboardButton("🇺🇦 Українська", callback_data="lang_uk"),
+            InlineKeyboardButton("🇬🇧 English", callback_data="lang_en"),
+            InlineKeyboardButton("🇷🇺 Русский", callback_data="lang_ru")
+        ]
     ]
     await update.message.reply_text(
-        "🔮 **Добро пожаловать в Molestrology!**\n\n"
-        "Нажмите кнопку **«Открыть Оракул»** ниже, чтобы запустить интерактивную карту звезд, "
-        "или просто отправьте фото ваших родинок в этот чат.",
+        "🔮 **Ласкаво просимо до Molestrology!**\n\n"
+        "Оберіть мову або натисніть **«Відкрити Оракул»**, щоб запустити інтерактивну карту зорей. "
+        "Також ви можете просто надіслати фото своїх родимок у цей чат.",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown"
     )
@@ -71,59 +76,83 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    if query.data == "lang_ru":
+    
+    if query.data == "lang_uk":
+        context.user_data["language"] = "uk"
+        await query.edit_message_text(
+            "📸 Надішли фото своїх родимок.\n\n"
+            "Я знайду в них зоряну карту та розповім її таємницю! ✨"
+        )
+    elif query.data == "lang_ru":
         context.user_data["language"] = "ru"
         await query.edit_message_text(
-            "📸 Отправь фото своих родимок.\n\n"
-            "Я найду в них звездную карту и расскажу, что она означает прямо сейчас! ✨"
+            "📸 Отправь фото своих родинок.\n\n"
+            "Я найду в них звездную карту и расскажу, что она означает! ✨"
         )
     elif query.data == "lang_en":
         context.user_data["language"] = "en"
         await query.edit_message_text(
             "📸 Send a photo of your moles.\n\n"
-            "I will find a star map and tell you what it means right now! ✨"
+            "I will find a star map and reveal its mystery! ✨"
         )
 
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    lang = context.user_data.get("language", "ru")
-    processing_msg = await update.message.reply_text(
-        "🔮 Считываю звездную карту..." if lang == "ru" else "🔮 Reading your star map..."
-    )
+    lang = context.user_data.get("language", "uk")
+    
+    status_messages = {
+        "uk": "🔮 Зчитую зоряну карту...",
+        "ru": "🔮 Считываю звездную карту...",
+        "en": "🔮 Reading your star map..."
+    }
+    processing_msg = await update.message.reply_text(status_messages.get(lang, status_messages["uk"]))
 
     try:
         photo_file = await update.message.photo[-1].get_file()
         photo_bytes = await photo_file.download_as_bytearray()
         
-        prompt = (
-            f"Ты — загадочный звездный оракул. На фото тела человека видны родинки. "
-            f"Отвечай ОДНИМ коротким абзацем (макс. 120 слов), увлекательно, мистически. "
-            f"Скажи, какое созвездие ты видишь в расположении родинок. "
-            f"Расскажи его древнюю легенду в 1 предложении. "
-            f"Что это означает для человека — его звездная судьба. "
-            f"Никаких списков, пиши одним связным текстом."
-            if lang == "ru" else
-            f"You are a mysterious star oracle. You see a photo of moles. "
-            f"Answer in ONE short paragraph (max 120 words), captivating, mystical. "
-            f"Tell what constellation you see. "
-            f"Share its ancient legend in 1 sentence. "
-            f"Tell what it means for the person — their star destiny. "
-            f"No lists, write in one flowing text."
-        )
+        # Системный промпт с жесткой привязкой к выбранному языку
+        prompts = {
+            "uk": (
+                "Ти — таємничий зоряний оракул. На фото тіла людини видно родимки. "
+                "Відповідай СУВОРO УКРАЇНСЬКОЮ МОВОЮ одним коротким абзацем (макс. 100 слів). "
+                "Знайди прадавнє созв'яззя в родимках, розкажи його легенду в 1 реченні "
+                "та пророкуй долю людини. Пиши суцільним художнім текстом без списків."
+            ),
+            "ru": (
+                "Ты — мистический звездный оракул. На фото видны родинки. "
+                "Отвечай СТРОГО НА РУССКОМ языке одним коротким абзацем (макс. 100 слов). "
+                "Назови созвездие, опиши легенду в 1 предложении и предскажи судьбу. Без списков."
+            ),
+            "en": (
+                "You are a mystical star oracle. Look at the moles on the skin. "
+                "Answer STRICTLY IN ENGLISH in ONE short paragraph (max 100 words). "
+                "Name the constellation, tell its legend in 1 sentence, and predict destiny. Flowing text only."
+            )
+        }
 
         image_part = {"mime_type": "image/jpeg", "data": bytes(photo_bytes)}
         model = genai.GenerativeModel("gemini-1.5-flash")
         
-        response = model.generate_content([prompt, image_part])
+        response = model.generate_content([prompts.get(lang, prompts["uk"]), image_part])
         text = response.text.strip()
 
         await processing_msg.edit_text(text)
         
-        voice_buffer = await generate_soft_voice(text, lang)
-        await update.message.reply_voice(voice=voice_buffer)
+        # Попытка генерации и отправки аудио в изоляции от основного текста
+        try:
+            voice_buffer = await generate_soft_voice(text, lang)
+            await update.message.reply_voice(voice=voice_buffer)
+        except Exception as tts_err:
+            logger.error(f"Ошибка генерации TTS: {tts_err}")
 
     except Exception as e:
         logger.exception(e)
-        await processing_msg.edit_text("❌ Ошибка при анализе. Попробуйте другое фото.")
+        error_msg = {
+            "uk": "❌ Помилка при аналізі. Спробуйте інше фото.",
+            "ru": "❌ Ошибка при анализе. Попробуйте другое фото.",
+            "en": "❌ Analysis error. Please try another photo."
+        }
+        await processing_msg.edit_text(error_msg.get(lang, error_msg["uk"]))
 
 def main():
     application = Application.builder().token(TELEGRAM_TOKEN).build()
@@ -132,8 +161,12 @@ def main():
     application.add_handler(MessageHandler(filters.PHOTO, photo_handler))
     
     if WEBHOOK_URL:
-        application.run_webhook(listen="0.0.0.0", port=int(os.environ.get("PORT", "10000")),
-                                url_path="/webhook", webhook_url=f"{WEBHOOK_URL.rstrip('/')}/webhook")
+        application.run_webhook(
+            listen="0.0.0.0",
+            port=int(os.environ.get("PORT", "10000")),
+            url_path="/webhook",
+            webhook_url=f"{WEBHOOK_URL.rstrip('/')}/webhook"
+        )
     else:
         application.run_polling()
 
