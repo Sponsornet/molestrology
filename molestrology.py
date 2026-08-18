@@ -73,6 +73,10 @@ async def handle_api_process(request):
         data = json.loads(clean_text)
 
         img = Image.open(BytesIO(photo_bytes)).convert("RGB")
+        
+        # Обмежуємо розмір вихідного зображення до 800px
+        img.thumbnail((800, 800))
+        
         draw = ImageDraw.Draw(img)
         w, h = img.size
         coords = data.get("coords", [])
@@ -80,12 +84,13 @@ async def handle_api_process(request):
         if coords:
             pts = [(c[0] * w / 1000, c[1] * h / 1000) for c in coords]
             for i in range(len(pts) - 1):
-                draw.line([pts[i], pts[i+1]], fill="yellow", width=6)
+                draw.line([pts[i], pts[i+1]], fill="yellow", width=4)
             for pt in pts:
-                draw.ellipse([pt[0]-10, pt[1]-10, pt[0]+10, pt[1]+10], outline="yellow", width=4)
+                draw.ellipse([pt[0]-6, pt[1]-6, pt[0]+6, pt[1]+6], outline="yellow", width=3)
 
         out_img = BytesIO()
-        img.save(out_img, format="JPEG")
+        # Зберігаємо із помірною якістю, щоб не перевантажувати WebView
+        img.save(out_img, format="JPEG", quality=75, optimize=True)
         img_b64 = base64.b64encode(out_img.getvalue()).decode('utf-8')
 
         audio_b64 = ""
