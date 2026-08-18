@@ -48,7 +48,6 @@ async def generate_soft_voice(text: str, lang: str = "uk") -> BytesIO:
     voice_buffer.seek(0)
     return voice_buffer
 
-# Заголовки CORS
 CORS_HEADERS = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -64,7 +63,7 @@ async def handle_api_process(request):
         field = await reader.next()
         photo_bytes = await field.read()
 
-        model = genai.GenerativeModel("gemini-3.6-flash")
+        model = genai.GenerativeModel("gemini-1.5-flash")
         prompt = (
             "Ты — мистический оракул. Проанализируй родинки. "
             "Верни STRICTLY JSON: {\"text\": \"пророчество на украинском...\", \"coords\": [[x1,y1], [x2,y2]]}"
