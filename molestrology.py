@@ -131,7 +131,7 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         }
 
         image_part = {"mime_type": "image/jpeg", "data": bytes(photo_bytes)}
-        model = genai.GenerativeModel("gemini-2.0-flash")
+        model = genai.GenerativeModel("gemini-3.6-flash")
         
         response = model.generate_content([prompts.get(lang, prompts["uk"]), image_part])
         text = response.text.strip()
