@@ -9,16 +9,13 @@ import google.generativeai as genai
 import edge_tts
 from aiohttp import web
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
-from telegram.ext import (
-    Application, CommandHandler, CallbackQueryHandler,
-    MessageHandler, filters, ContextTypes
-)
+from telegram.ext import Application, CommandHandler, ContextTypes
 
-# Налаштування логування
+# Логування
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Конфігурація
+# Змінні середовища
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "").strip()
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 WEBHOOK_URL    = os.environ.get("WEBHOOK_URL", "").strip()
@@ -29,7 +26,21 @@ MINI_APP_URL = "https://Sponsornet.github.io/molestrology/"
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 
-# --- Генерація голосу ---
+# Ініціалізація Telegram Bot Application
+ptb_app = Application.builder().token(TELEGRAM_TOKEN).build()
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [[InlineKeyboardButton("🔮 Відкрити Оракул (Mini App)", web_app=WebAppInfo(url=MINI_APP_URL))]]
+    await update.message.reply_text(
+        "🔮 **Ласкаво просимо до Molestrology!**\n\n"
+        "Натисніть кнопку нижче, щоб відкрити Mini App та дізнатися таємницю своїх зорей.",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown"
+    )
+
+ptb_app.add_handler(CommandHandler("start", start))
+
+# Генерація голосу
 async def generate_soft_voice(text: str, lang: str = "uk") -> BytesIO:
     voices = {"uk": "uk-UA-PolinaNeural", "ru": "ru-RU-SvetlanaNeural", "en": "en-US-AvaNeural"}
     voice = voices.get(lang, "uk-UA-PolinaNeural")
@@ -41,7 +52,7 @@ async def generate_soft_voice(text: str, lang: str = "uk") -> BytesIO:
     voice_buffer.seek(0)
     return voice_buffer
 
-# --- Обробка запиту від Mini App ---
+# Обробка запиту від Mini App
 async def handle_api_process(request):
     try:
         reader = await request.multipart()
@@ -91,42 +102,32 @@ async def handle_api_process(request):
     except Exception as e:
         return web.json_response({"error": str(e)}, status=500, headers={"Access-Control-Allow-Origin": "*"})
 
-# --- Команди бота ---
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [[InlineKeyboardButton("🔮 Відкрити Оракул (Mini App)", web_app=WebAppInfo(url=MINI_APP_URL))]]
-    await update.message.reply_text(
-        "🔮 **Ласкаво просимо до Molestrology!**\n\n"
-        "Натисніть кнопку нижче, щоб відкрити Mini App та дізнатися таємницю своїх зорей.",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="Markdown"
-    )
+# Обробник вебхуків Telegram
+async def handle_telegram_webhook(request):
+    data = await request.json()
+    await ptb_app.process_update(Update.de_json(data, ptb_app.bot))
+    return web.Response()
 
-# --- Запуск веб-сервера та бота ---
-async def main():
-    ptb_app = Application.builder().token(TELEGRAM_TOKEN).build()
-    ptb_app.add_handler(CommandHandler("start", start))
+async def on_startup(app):
     await ptb_app.initialize()
+    await ptb_app.start()
+    if WEBHOOK_URL:
+        await ptb_app.bot.set_webhook(url=f"{WEBHOOK_URL.rstrip('/')}/webhook")
+    logger.info("Бот успішно ініціалізовано!")
 
+async def on_cleanup(app):
+    await ptb_app.stop()
+    await ptb_app.shutdown()
+
+def main():
     app = web.Application()
     app.router.add_post("/api/process", handle_api_process)
+    app.router.add_post("/webhook", handle_telegram_webhook)
+    
+    app.on_startup.append(on_startup)
+    app.on_cleanup.append(on_cleanup)
 
-    if WEBHOOK_URL:
-        async def telegram_webhook(request):
-            data = await request.json()
-            await ptb_app.process_update(Update.de_json(data, ptb_app.bot))
-            return web.Response()
-        
-        app.router.add_post("/webhook", telegram_webhook)
-        await ptb_app.bot.set_webhook(url=f"{WEBHOOK_URL.rstrip('/')}/webhook")
-
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", PORT)
-    await site.start()
-
-    await ptb_app.start()
-    logger.info("Сервер та бот успішно запущені!")
+    web.run_app(app, host="0.0.0.0", port=PORT)
 
 if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())
+    main()
