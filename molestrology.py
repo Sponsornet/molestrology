@@ -2,6 +2,7 @@ import os
 import logging
 import json
 import base64
+import re
 from io import BytesIO
 from PIL import Image, ImageDraw
 
@@ -63,18 +64,36 @@ async def handle_api_process(request):
         field = await reader.next()
         photo_bytes = await field.read()
 
-        model = genai.GenerativeModel("gemini-3.6-flash")
         prompt = (
             "Ты — мистический оракул. Проанализируй родинки. "
-            "Верни STRICTLY JSON: {\"text\": \"пророчество на украинском...\", \"coords\": [[x1,y1], [x2,y2]]}"
+            "Верни STRICTLY valid JSON without Markdown blocks: "
+            "{\"text\": \"пророчество на украинском...\", \"coords\": [[x1,y1], [x2,y2]]}"
         )
-        response = model.generate_content([prompt, {"mime_type": "image/jpeg", "data": photo_bytes}])
-        clean_text = response.text.replace("```json", "").replace("```", "").strip()
-        data = json.loads(clean_text)
+
+        # Список моделей для почергового виклику на випадок помилки
+        candidate_models = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash"]
+        response = None
+
+        for model_name in candidate_models:
+            try:
+                model = genai.GenerativeModel(model_name)
+                response = model.generate_content([prompt, {"mime_type": "image/jpeg", "data": photo_bytes}])
+                if response and response.text:
+                    logger.info(f"Успішно використано модель: {model_name}")
+                    break
+            except Exception as err:
+                logger.warning(f"Модель {model_name} повернула помилку: {err}")
+
+        if not response or not response.text:
+            raise ValueError("Жодна з моделей Gemini не змогла обробити зображення.")
+
+        raw_text = response.text.strip()
+        match = re.search(r'\{.*\}', raw_text, re.DOTALL)
+        clean_json_str = match.group(0) if match else raw_text
+
+        data = json.loads(clean_json_str)
 
         img = Image.open(BytesIO(photo_bytes)).convert("RGB")
-        
-        # Обмежуємо розмір вихідного зображення до 800px
         img.thumbnail((800, 800))
         
         draw = ImageDraw.Draw(img)
@@ -89,7 +108,6 @@ async def handle_api_process(request):
                 draw.ellipse([pt[0]-6, pt[1]-6, pt[0]+6, pt[1]+6], outline="yellow", width=3)
 
         out_img = BytesIO()
-        # Зберігаємо із помірною якістю, щоб не перевантажувати WebView
         img.save(out_img, format="JPEG", quality=75, optimize=True)
         img_b64 = base64.b64encode(out_img.getvalue()).decode('utf-8')
 
@@ -106,6 +124,7 @@ async def handle_api_process(request):
             "image": img_b64,
             "audio": audio_b64
         }, headers=CORS_HEADERS)
+
     except Exception as e:
         logger.error(f"API Error: {e}")
         return web.json_response({"error": str(e)}, status=500, headers=CORS_HEADERS)
