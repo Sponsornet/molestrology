@@ -1,98 +1,39 @@
-<!DOCTYPE html>
-<html lang="uk">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Molestrology Mini App</title>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <style>
-        body { font-family: sans-serif; background: #0f0c1b; color: #fff; text-align: center; padding: 20px; }
-        .card { background: #1a1528; padding: 15px; border-radius: 12px; margin-top: 15px; }
-        img { max-width: 100%; border-radius: 8px; margin-top: 10px; }
-        button { background: #8a2be2; color: white; border: none; padding: 12px 24px; border-radius: 8px; font-size: 16px; cursor: pointer; margin-top: 15px; }
-        #status { color: #ba68c8; font-weight: bold; margin-top: 10px; }
-    </style>
-</head>
-<body>
-    <h2>✨ Таємниця Твоїх Зорей ✨</h2>
-    <input type="file" id="photoInput" accept="image/*" style="display:none" onchange="uploadPhoto()">
-    <button onclick="document.getElementById('photoInput').click()">Завантажити фото</button>
+async function uploadPhoto() {
+    const input = document.getElementById('photoInput');
+    if (!input.files[0]) return;
 
-    <div id="status"></div>
-    <div id="result" class="card" style="display:none;">
-        <img id="outImage" src="" alt="Зоряна карта">
-        <p id="outText"></p>
-        <audio id="outAudio" controls style="width: 100%; margin-top: 10px;"></audio>
-    </div>
+    const status = document.getElementById('status');
+    const resultDiv = document.getElementById('result');
+    status.innerText = "🔮 Зчитую зірки (це може зайняти до 20-30 сек)...";
+    resultDiv.style.display = "none";
 
-    <script>
-        const tg = window.Telegram.WebApp;
-        tg.expand();
+    try {
+        const resizedBlob = await resizeImage(input.files[0], 800);
+        const formData = new FormData();
+        formData.append("file", resizedBlob, "photo.jpg");
 
-        const BACKEND_URL = "https://molestrology.onrender.com/api/process";
+        const res = await fetch("https://molestrology.onrender.com/api/process", { 
+            method: "POST", 
+            body: formData 
+        });
 
-        // Функція для стиснення фото перед відправкою
-        function resizeImage(file, maxWidth = 800) {
-            return new Promise((resolve) => {
-                const img = new Image();
-                img.src = URL.createObjectURL(file);
-                img.onload = () => {
-                    const canvas = document.createElement('canvas');
-                    let width = img.width;
-                    let height = img.height;
+        const data = await res.json();
 
-                    if (width > maxWidth) {
-                        height = Math.round((height * maxWidth) / width);
-                        width = maxWidth;
-                    }
+        if (data.error) throw new Error(data.error);
 
-                    canvas.width = width;
-                    canvas.height = height;
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(img, 0, 0, width, height);
-
-                    canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.8);
-                };
-            });
+        document.getElementById('outImage').src = "data:image/jpeg;base64," + data.image;
+        document.getElementById('outText').innerText = data.text;
+        
+        if (data.audio) {
+            const audio = document.getElementById('outAudio');
+            audio.src = "data:audio/mp3;base64," + data.audio;
+            audio.play();
         }
 
-        async function uploadPhoto() {
-            const input = document.getElementById('photoInput');
-            if (!input.files[0]) return;
-
-            const status = document.getElementById('status');
-            const resultDiv = document.getElementById('result');
-            status.innerText = "🔮 Зчитую зірки...";
-            resultDiv.style.display = "none";
-
-            try {
-                // Стискаємо фото перед відправкою
-                const resizedBlob = await resizeImage(input.files[0], 800);
-
-                const formData = new FormData();
-                formData.append("file", resizedBlob, "photo.jpg");
-
-                const res = await fetch(BACKEND_URL, { method: "POST", body: formData });
-                const data = await res.json();
-
-                if (data.error) throw new Error(data.error);
-
-                document.getElementById('outImage').src = "data:image/jpeg;base64," + data.image;
-                document.getElementById('outText').innerText = data.text;
-                
-                if (data.audio) {
-                    const audio = document.getElementById('outAudio');
-                    audio.src = "data:audio/mp3;base64," + data.audio;
-                    audio.play();
-                }
-
-                status.innerText = "";
-                resultDiv.style.display = "block";
-            } catch (err) {
-                status.innerText = "❌ Помилка аналізу. Спробуйте ще раз.";
-                console.error(err);
-            }
-        }
-    </script>
-</body>
-</html>
+        status.innerText = "";
+        resultDiv.style.display = "block";
+    } catch (err) {
+        status.innerText = "❌ Сервер ще прокидається або сталася помилка. Натисніть ще раз!";
+        console.error(err);
+    }
+}
