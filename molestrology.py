@@ -1,159 +1,132 @@
-import os
-import logging
+import io
 import json
-import base64
-import re
-from io import BytesIO
+import os
+import asyncio
 from PIL import Image, ImageDraw
-
-import google.generativeai as genai
-import edge_tts
+from gtts import gTTS
+from google import genai
+from google.genai import types
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from aiohttp import web
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
-from telegram.ext import Application, CommandHandler, ContextTypes
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Отримання ключів зі змінних оточення (Environment Variables)
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "").strip()
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
-WEBHOOK_URL    = os.environ.get("WEBHOOK_URL", "").strip()
-PORT           = int(os.environ.get("PORT", "10000"))
+# Ініціалізація клієнта Gemini
+client = genai.Client(api_key=GEMINI_API_KEY)
 
-MINI_APP_URL = "https://Sponsornet.github.io/molestrology/"
+# --- ВЕБ-СЕРВЕР ДЛЯ ПІДТРИМКИ ПОРТУ RENDER ---
+async def handle_ping(request):
+    return web.Response(text="Molestrology Bot is active!")
 
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
+async def start_web_server():
+    app = web.Application()
+    app.router.add_get('/', handle_ping)
+    app.router.add_get('/health', handle_ping)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.environ.get("PORT", 10000))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
 
-ptb_app = Application.builder().token(TELEGRAM_TOKEN).build()
-
+# --- ЛОГІКА ТЕЛЕГРАМ-БОТА ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [[InlineKeyboardButton("🔮 Відкрити Оракул (Mini App)", web_app=WebAppInfo(url=MINI_APP_URL))]]
     await update.message.reply_text(
-        "🔮 **Ласкаво просимо до Molestrology!**\n\n"
-        "Натисніть кнопку нижче, щоб відкрити Mini App.",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="Markdown"
+        "🔮 **Molestrology Bot**\n\n"
+        "Надішли мені фотографію шкіри з родимками, і я прочитаю твоє астрологічне сузір'я!"
     )
 
-ptb_app.add_handler(CommandHandler("start", start))
-
-async def generate_soft_voice(text: str, lang: str = "uk") -> BytesIO:
-    voices = {"uk": "uk-UA-PolinaNeural", "ru": "ru-RU-SvetlanaNeural", "en": "en-US-AvaNeural"}
-    voice = voices.get(lang, "uk-UA-PolinaNeural")
-    communicate = edge_tts.Communicate(text[:800], voice)
-    voice_buffer = BytesIO()
-    async for chunk in communicate.stream():
-        if chunk["type"] == "data":
-            voice_buffer.write(chunk["data"])
-    voice_buffer.seek(0)
-    return voice_buffer
-
-CORS_HEADERS = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
-}
-
-async def handle_options(request):
-    return web.Response(status=200, headers=CORS_HEADERS)
-
-async def handle_api_process(request):
+async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = await update.message.reply_text("✨ Зчитую розташування зірок та родимок (зачекайте 15-20 сек)...")
+    
     try:
-        reader = await request.multipart()
-        field = await reader.next()
-        photo_bytes = await field.read()
+        # Завантаження фото від користувача
+        photo_file = await update.message.photo[-1].get_file()
+        photo_bytes = await photo_file.download_as_bytearray()
+        
+        image = Image.open(io.BytesIO(photo_bytes)).convert("RGB")
+        width, height = image.size
 
-        prompt = (
-            "Ты — мистический оракул. Проанализируй родинки. "
-            "Верни STRICTLY valid JSON without Markdown blocks: "
-            "{\"text\": \"пророчество на украинском...\", \"coords\": [[x1,y1], [x2,y2]]}"
+        # Запит до Gemini
+        prompt = """
+        Проаналізуй це фото для гумористичного додатка Molestrology. 
+        1. Знайди всі родимки, ластовиння або помітні цятки на шкірі. Поверни їх координати [ymin, xmin, ymax, xmax] у діапазоні від 0 до 1000.
+        2. Придумай короткий, кумедний, іронічний та містичний астрологічний прогноз (3-4 речення) на основі з'єднаних родимок-сузір'їв.
+        
+        Поверни відповідь СУВОРО у форматі JSON:
+        {
+          "moles": [[ymin, xmin, ymax, xmax]],
+          "prediction": "Текст прогнозу українською мовою..."
+        }
+        """
+
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=[image, prompt],
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json"
+            )
         )
 
-        # Список моделей для почергового виклику на випадок помилки
-        candidate_models = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash"]
-        response = None
+        data = json.loads(response.text)
+        moles = data.get("moles", [])
+        prediction_text = data.get("prediction", "Зірки мовчать, але ваші родимки утворюють дивовижне сузір'я!")
 
-        for model_name in candidate_models:
-            try:
-                model = genai.GenerativeModel(model_name)
-                response = model.generate_content([prompt, {"mime_type": "image/jpeg", "data": photo_bytes}])
-                if response and response.text:
-                    logger.info(f"Успішно використано модель: {model_name}")
-                    break
-            except Exception as err:
-                logger.warning(f"Модель {model_name} повернула помилку: {err}")
+        # Малювання точок та ліній між родимками
+        draw = ImageDraw.Draw(image)
+        centers = []
 
-        if not response or not response.text:
-            raise ValueError("Жодна з моделей Gemini не змогла обробити зображення.")
+        for mole in moles:
+            ymin, xmin, ymax, xmax = mole
+            cx = int(((xmin + xmax) / 2) / 1000 * width)
+            cy = int(((ymin + ymax) / 2) / 1000 * height)
+            centers.append((cx, cy))
+            # Малюємо червоний круг з жовтою обводкою
+            draw.ellipse([cx - 6, cy - 6, cx + 6, cy + 6], fill="red", outline="yellow", width=2)
 
-        raw_text = response.text.strip()
-        match = re.search(r'\{.*\}', raw_text, re.DOTALL)
-        clean_json_str = match.group(0) if match else raw_text
+        # З'єднуємо родимки блакитними лініями сузір'я
+        if len(centers) > 1:
+            draw.line(centers, fill="cyan", width=4)
+            if len(centers) > 2:
+                draw.line([centers[-1], centers[0]], fill="cyan", width=4)
 
-        data = json.loads(clean_json_str)
+        # Збереження картинки в буфер
+        img_buffer = io.BytesIO()
+        image.save(img_buffer, format="JPEG")
+        img_buffer.seek(0)
 
-        img = Image.open(BytesIO(photo_bytes)).convert("RGB")
-        img.thumbnail((800, 800))
+        # Озвучка через gTTS
+        tts = gTTS(text=prediction_text, lang='uk')
+        audio_buffer = io.BytesIO()
+        tts.write_to_fp(audio_buffer)
+        audio_buffer.seek(0)
+        audio_buffer.name = "molestrology_voice.mp3"
+
+        # Відправка фото та аудіо в Telegram
+        await update.message.reply_photo(photo=img_buffer, caption=f"🔮 **Твій астропрогноз:**\n\n{prediction_text}")
+        await update.message.reply_voice(voice=audio_buffer)
         
-        draw = ImageDraw.Draw(img)
-        w, h = img.size
-        coords = data.get("coords", [])
-        
-        if coords:
-            pts = [(c[0] * w / 1000, c[1] * h / 1000) for c in coords]
-            for i in range(len(pts) - 1):
-                draw.line([pts[i], pts[i+1]], fill="yellow", width=4)
-            for pt in pts:
-                draw.ellipse([pt[0]-6, pt[1]-6, pt[0]+6, pt[1]+6], outline="yellow", width=3)
-
-        out_img = BytesIO()
-        img.save(out_img, format="JPEG", quality=75, optimize=True)
-        img_b64 = base64.b64encode(out_img.getvalue()).decode('utf-8')
-
-        audio_b64 = ""
-        try:
-            voice_buf = await generate_soft_voice(data.get("text", ""), "uk")
-            if voice_buf:
-                audio_b64 = base64.b64encode(voice_buf.getvalue()).decode('utf-8')
-        except Exception as e:
-            logger.warning(f"TTS Error: {e}")
-
-        return web.json_response({
-            "text": data.get("text", ""),
-            "image": img_b64,
-            "audio": audio_b64
-        }, headers=CORS_HEADERS)
+        await msg.delete()
 
     except Exception as e:
-        logger.error(f"API Error: {e}")
-        return web.json_response({"error": str(e)}, status=500, headers=CORS_HEADERS)
+        await msg.edit_text(f"❌ Сталася помилка під час обробки: {e}")
 
-async def handle_telegram_webhook(request):
-    data = await request.json()
-    await ptb_app.process_update(Update.de_json(data, ptb_app.bot))
-    return web.Response()
-
-async def on_startup(app):
-    await ptb_app.initialize()
-    await ptb_app.start()
-    if WEBHOOK_URL:
-        await ptb_app.bot.set_webhook(url=f"{WEBHOOK_URL.rstrip('/')}/webhook")
-
-async def on_cleanup(app):
-    await ptb_app.stop()
-    await ptb_app.shutdown()
-
-def main():
-    app = web.Application()
-    app.router.add_options("/api/process", handle_options)
-    app.router.add_post("/api/process", handle_api_process)
-    app.router.add_post("/webhook", handle_telegram_webhook)
+async def main():
+    # Запуск веб-сервера для Render
+    await start_web_server()
     
-    app.on_startup.append(on_startup)
-    app.on_cleanup.append(on_cleanup)
+    # Запуск Telegram-бота
+    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+    
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling()
+    
+    await asyncio.Event().wait()
 
-    web.run_app(app, host="0.0.0.0", port=PORT)
-
-if __name__ == "__main__":
-    main()
+if __name__ == '__main__':
+    asyncio.run(main())
