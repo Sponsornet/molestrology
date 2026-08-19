@@ -54,9 +54,11 @@
           status.innerText = "";
           resultDiv.style.display = "block";
 
-        } catch (err) {
-          status.innerText = "❌ Сервер ще прокидається або сталася помилка. Натисніть ще раз!";
-          console.error(err);
+          } catch (err) {
+  status.innerText = "❌ Деталі помилки: " + err;
+  console.error(err);
+}
+
         }
       }
     </script>
