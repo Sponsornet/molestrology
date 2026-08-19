@@ -2,65 +2,78 @@
 <html lang="uk">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Molestrology</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; background: #111; color: #fff; }
+        button, input { margin: 10px 0; display: block; }
+        #status { color: #ffca28; margin: 10px 0; font-weight: bold; }
+        #result img { max-width: 100%; height: auto; border-radius: 8px; margin-top: 10px; }
+    </style>
 </head>
 <body>
 
-    <!-- Ваша HTML-розмітка (інпути, кнопки, блоки виводу) -->
+    <h2>Molestrology</h2>
+    
     <input type="file" id="photoInput" accept="image/*">
     <button onclick="uploadPhoto()">Завантажити</button>
     
     <div id="status"></div>
+    
     <div id="result" style="display:none;">
-        <img id="outImage" src="" alt="Result">
+        <img id="outImage" src="" alt="Результат">
         <p id="outText"></p>
         <audio id="outAudio" controls></audio>
     </div>
 
-    <!-- ВСТАВЛЯТИ СЮДИ -->
     <script>
-      async function uploadPhoto() {
-        const input = document.getElementById('photoInput');
-        if (!input.files[0]) return;
+    async function uploadPhoto() {
+      const input = document.getElementById('photoInput');
+      const status = document.getElementById('status');
+      const resultDiv = document.getElementById('result');
 
-        const status = document.getElementById('status');
-        const resultDiv = document.getElementById('result');
-
-        status.innerText = "🔮 Зчитую зірки (це може зайняти до 20-30 сек)...";
-        resultDiv.style.display = "none";
-
-        try {
-          const resizedBlob = await resizeImage(input.files[0], 800);
-          const formData = new FormData();
-          formData.append("file", resizedBlob, "photo.jpg");
-
-          const res = await fetch("https://molestrology.onrender.com/api/process", {
-            method: "POST",
-            body: formData
-          });
-
-          const data = await res.json();
-          if (data.error) throw new Error(data.error);
-
-          document.getElementById('outImage').src = "data:image/jpeg;base64," + data.image;
-          document.getElementById('outText').innerText = data.text;
-
-          if (data.audio) {
-            const audio = document.getElementById('outAudio');
-            audio.src = "data:audio/mp3;base64," + data.audio;
-            audio.play();
-          }
-
-          status.innerText = "";
-          resultDiv.style.display = "block";
-
-          } catch (err) {
-  status.innerText = "❌ Деталі помилки: " + err;
-  console.error(err);
-}
-
-        }
+      if (!input.files[0]) {
+        status.innerText = "⚠️ Оберіть файл!";
+        return;
       }
+
+      status.innerText = "🔮 Зчитую зірки (це може зайняти до 20-30 сек)...";
+      resultDiv.style.display = "none";
+
+      try {
+        const formData = new FormData();
+        // Передаємо файл напряму без resizeImage
+        formData.append("file", input.files[0], "photo.jpg");
+
+        const res = await fetch("https://molestrology.onrender.com/api/process", {
+          method: "POST",
+          body: formData
+        });
+
+        if (!res.ok) {
+          throw new Error("Сервер повернув статус " + res.status);
+        }
+
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+
+        document.getElementById('outImage').src = "data:image/jpeg;base64," + data.image;
+        document.getElementById('outText').innerText = data.text;
+
+        if (data.audio) {
+          const audio = document.getElementById('outAudio');
+          audio.src = "data:audio/mp3;base64," + data.audio;
+          audio.play();
+        }
+
+        status.innerText = "";
+        resultDiv.style.display = "block";
+
+      } catch (err) {
+        status.innerText = "❌ Помилка: " + err.message;
+        console.error(err);
+      }
+    }
     </script>
 </body>
 </html>
