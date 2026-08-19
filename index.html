@@ -1,39 +1,64 @@
-async function uploadPhoto() {
-    const input = document.getElementById('photoInput');
-    if (!input.files[0]) return;
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <title>Molestrology</title>
+</head>
+<body>
 
-    const status = document.getElementById('status');
-    const resultDiv = document.getElementById('result');
-    status.innerText = "🔮 Зчитую зірки (це може зайняти до 20-30 сек)...";
-    resultDiv.style.display = "none";
+    <!-- Ваша HTML-розмітка (інпути, кнопки, блоки виводу) -->
+    <input type="file" id="photoInput" accept="image/*">
+    <button onclick="uploadPhoto()">Завантажити</button>
+    
+    <div id="status"></div>
+    <div id="result" style="display:none;">
+        <img id="outImage" src="" alt="Result">
+        <p id="outText"></p>
+        <audio id="outAudio" controls></audio>
+    </div>
 
-    try {
-        const resizedBlob = await resizeImage(input.files[0], 800);
-        const formData = new FormData();
-        formData.append("file", resizedBlob, "photo.jpg");
+    <!-- ВСТАВЛЯТИ СЮДИ -->
+    <script>
+      async function uploadPhoto() {
+        const input = document.getElementById('photoInput');
+        if (!input.files[0]) return;
 
-        const res = await fetch("https://molestrology.onrender.com/api/process", { 
-            method: "POST", 
-            body: formData 
-        });
+        const status = document.getElementById('status');
+        const resultDiv = document.getElementById('result');
 
-        const data = await res.json();
+        status.innerText = "🔮 Зчитую зірки (це може зайняти до 20-30 сек)...";
+        resultDiv.style.display = "none";
 
-        if (data.error) throw new Error(data.error);
+        try {
+          const resizedBlob = await resizeImage(input.files[0], 800);
+          const formData = new FormData();
+          formData.append("file", resizedBlob, "photo.jpg");
 
-        document.getElementById('outImage').src = "data:image/jpeg;base64," + data.image;
-        document.getElementById('outText').innerText = data.text;
-        
-        if (data.audio) {
+          const res = await fetch("https://molestrology.onrender.com/api/process", {
+            method: "POST",
+            body: formData
+          });
+
+          const data = await res.json();
+          if (data.error) throw new Error(data.error);
+
+          document.getElementById('outImage').src = "data:image/jpeg;base64," + data.image;
+          document.getElementById('outText').innerText = data.text;
+
+          if (data.audio) {
             const audio = document.getElementById('outAudio');
             audio.src = "data:audio/mp3;base64," + data.audio;
             audio.play();
-        }
+          }
 
-        status.innerText = "";
-        resultDiv.style.display = "block";
-    } catch (err) {
-        status.innerText = "❌ Сервер ще прокидається або сталася помилка. Натисніть ще раз!";
-        console.error(err);
-    }
-}
+          status.innerText = "";
+          resultDiv.style.display = "block";
+
+        } catch (err) {
+          status.innerText = "❌ Сервер ще прокидається або сталася помилка. Натисніть ще раз!";
+          console.error(err);
+        }
+      }
+    </script>
+</body>
+</html>
