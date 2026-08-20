@@ -60,9 +60,9 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         }
         """
 
-        # Використовуємо стандартну стабільну модель
+        # Використовуємо актуальну модель gemini-3.6-flash
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-3.6-flash',
             contents=[image, prompt],
             config=types.GenerateContentConfig(
                 response_mime_type="application/json"
