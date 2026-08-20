@@ -3,18 +3,16 @@ import json
 import os
 import asyncio
 from PIL import Image, ImageDraw
-from gtts import gTTS
+import edge_tts
 from google import genai
 from google.genai import types
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from aiohttp import web
 
-# Отримання ключів зі змінних оточення Render
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-# Ініціалізація Gemini
 client = genai.Client(api_key=GEMINI_API_KEY)
 
 # --- ВЕБ-СЕРВЕР ДЛЯ РЕНДЕРА ---
@@ -60,7 +58,6 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         }
         """
 
-        # Використовуємо актуальну модель gemini-3.6-flash
         response = client.models.generate_content(
             model='gemini-3.6-flash',
             contents=[image, prompt],
@@ -93,10 +90,16 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         image.save(img_buffer, format="JPEG")
         img_buffer.seek(0)
 
-        # Озвучка
-        tts = gTTS(text=prediction_text, lang='uk')
+        # Озвучка через реалістичний нейроголос Microsoft (Ostap)
+        # Якщо захочете жіночий голос, замініть OstapNeural на PolinaNeural
+        voice = "uk-UA-OstapNeural"
+        communicate = edge_tts.Communicate(prediction_text, voice)
+        
         audio_buffer = io.BytesIO()
-        tts.write_to_fp(audio_buffer)
+        async for chunk in communicate.stream():
+            if chunk["type"] == "data":
+                audio_buffer.write(chunk["data"])
+                
         audio_buffer.seek(0)
         audio_buffer.name = "molestrology_voice.mp3"
 
