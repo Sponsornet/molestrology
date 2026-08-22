@@ -91,16 +91,16 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         image.save(img_buffer, format="JPEG")
         img_buffer.seek(0)
 
-        # Озвучка через edge-tts
-        voice = "uk-UA-OstapNeural"
+        # Озвучка через жіночий нейроголос Polina
+        voice = "uk-UA-PolinaNeural"
         communicate = edge_tts.Communicate(prediction_text, voice)
         await communicate.save(temp_audio_path)
 
-        # Відправка фото та аудіо
+        # Відправка фото та голосового повідомлення
         await update.message.reply_photo(photo=img_buffer, caption=f"🔮 **Твій астропрогноз:**\n\n{prediction_text}")
         
         with open(temp_audio_path, "rb") as audio_file:
-            await update.message.reply_audio(audio=audio_file, filename="astroprediction.mp3")
+            await update.message.reply_voice(voice=audio_file, filename="voice.ogg")
         
         await msg.delete()
 
