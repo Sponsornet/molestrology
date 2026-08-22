@@ -3,7 +3,6 @@ import json
 import os
 import re
 import asyncio
-import random
 from PIL import Image, ImageDraw
 import edge_tts
 from google import genai
@@ -59,8 +58,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         prompt = """
         Проаналізуй це фото для гумористичного додатка Molestrology. 
         1. Знайди всі родимки, ластовиння або помітні цятки на шкірі. Поверни їх координати [ymin, xmin, ymax, xmax] у діапазоні від 0 до 1000.
-        2. Придумай неймовірно смішний, сатиричний та живий астрологічний прогноз (3-4 речення). 
-           Пиши так, ніби це говорить стендап-комік або ексцентрична ворожка. Використовуй розмовні слова, жарти, окличні та питальні знаки.
+        2. Придумай ультра-веселий, жартівливий астрологічний прогноз (3-4 речення) у стилі сучасного підлітка (використовуй слова типу "капець", "вайб", "треш", енергійні вигуки та знаки оклику).
         
         Поверни відповідь СУВОРО у форматі JSON:
         {
@@ -79,7 +77,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         data = json.loads(response.text)
         moles = data.get("moles", [])
-        prediction_text = data.get("prediction", "Ой, та тут ціле сузір'я хаосу! Зірки радять триматися за каструлі й не вірити обіцянкам котів.")
+        prediction_text = data.get("prediction", "Блін, тут повний вайб хаосу! Зірки кажуть, що сьогодні ти головна зірка цього трешу!")
 
         # Малюємо точки та сузір'я
         draw = ImageDraw.Draw(image)
@@ -104,12 +102,9 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Очищаємо текст для озвучення
         clean_speech_text = clean_text_for_tts(prediction_text)
 
-        # Можемо обирати між LadaNeural та DmytroNeural (або випадково, або встановити один)
-        # Використаємо LadaNeural з трохи живішим темпом
-        voices = ["uk-UA-LadaNeural", "uk-UA-PolinaNeural"]
-        chosen_voice = random.choice(voices) # або пропиши жорстко "uk-UA-LadaNeural"
-
-        communicate = edge_tts.Communicate(clean_speech_text, chosen_voice, rate="+8%", pitch="+3Hz")
+        # Робимо голос вищим (+9Hz) та швидшим (+12%), щоб звучало як у молодої дівчини
+        voice = "uk-UA-LadaNeural"
+        communicate = edge_tts.Communicate(clean_speech_text, voice, rate="+12%", pitch="+9Hz")
         await communicate.save(temp_audio_path)
 
         # Відправка фото та голосового повідомлення
