@@ -3,6 +3,7 @@ import json
 import os
 import re
 import asyncio
+import random
 from PIL import Image, ImageDraw
 import edge_tts
 from google import genai
@@ -58,8 +59,8 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         prompt = """
         Проаналізуй це фото для гумористичного додатка Molestrology. 
         1. Знайди всі родимки, ластовиння або помітні цятки на шкірі. Поверни їх координати [ymin, xmin, ymax, xmax] у діапазоні від 0 до 1000.
-        2. Придумай СУПЕР ВЕСЕЛИЙ, комічний та іронічний астрологічний прогноз (3-4 речення). 
-           Обов'язково додавай емоційні вигуки українською мовою (наприклад: "Ого!", "Нічого собі!", "Ага!", "Охо-хо!", "Увага!"), більше знаків оклику (!) та питальних речень, щоб озвучка звучала максимально весело та емоційно!
+        2. Придумай неймовірно смішний, сатиричний та живий астрологічний прогноз (3-4 речення). 
+           Пиши так, ніби це говорить стендап-комік або ексцентрична ворожка. Використовуй розмовні слова, жарти, окличні та питальні знаки.
         
         Поверни відповідь СУВОРО у форматі JSON:
         {
@@ -78,7 +79,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         data = json.loads(response.text)
         moles = data.get("moles", [])
-        prediction_text = data.get("prediction", "Ого! Зірки мовчать, але ваші родимки утворюють дивовижне сузір'я!")
+        prediction_text = data.get("prediction", "Ой, та тут ціле сузір'я хаосу! Зірки радять триматися за каструлі й не вірити обіцянкам котів.")
 
         # Малюємо точки та сузір'я
         draw = ImageDraw.Draw(image)
@@ -103,9 +104,12 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Очищаємо текст для озвучення
         clean_speech_text = clean_text_for_tts(prediction_text)
 
-        # Стабільний запуск PolinaNeural з прискоренням та тоном без обгортки в SSML
-        voice = "uk-UA-PolinaNeural"
-        communicate = edge_tts.Communicate(clean_speech_text, voice, rate="+6%", pitch="+4Hz")
+        # Можемо обирати між LadaNeural та DmytroNeural (або випадково, або встановити один)
+        # Використаємо LadaNeural з трохи живішим темпом
+        voices = ["uk-UA-LadaNeural", "uk-UA-PolinaNeural"]
+        chosen_voice = random.choice(voices) # або пропиши жорстко "uk-UA-LadaNeural"
+
+        communicate = edge_tts.Communicate(clean_speech_text, chosen_voice, rate="+8%", pitch="+3Hz")
         await communicate.save(temp_audio_path)
 
         # Відправка фото та голосового повідомлення
