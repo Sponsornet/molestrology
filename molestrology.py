@@ -38,6 +38,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = await update.message.reply_text("✨ Зчитую розташування зірок та родимок (зачекайте 15-20 сек)...")
+    temp_audio_path = f"voice_{update.message.message_id}.mp3"
     
     try:
         photo_file = await update.message.photo[-1].get_file()
@@ -90,26 +91,25 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         image.save(img_buffer, format="JPEG")
         img_buffer.seek(0)
 
-        # Озвучка через реалістичний нейроголос Microsoft (Ostap)
-        # Якщо захочете жіночий голос, замініть OstapNeural на PolinaNeural
+        # Озвучка через edge-tts
         voice = "uk-UA-OstapNeural"
         communicate = edge_tts.Communicate(prediction_text, voice)
-        
-        audio_buffer = io.BytesIO()
-        async for chunk in communicate.stream():
-            if chunk["type"] == "data":
-                audio_buffer.write(chunk["data"])
-                
-        audio_buffer.seek(0)
-        audio_buffer.name = "molestrology_voice.mp3"
+        await communicate.save(temp_audio_path)
 
+        # Відправка фото та аудіо
         await update.message.reply_photo(photo=img_buffer, caption=f"🔮 **Твій астропрогноз:**\n\n{prediction_text}")
-        await update.message.reply_voice(voice=audio_buffer)
+        
+        with open(temp_audio_path, "rb") as audio_file:
+            await update.message.reply_audio(audio=audio_file, filename="astroprediction.mp3")
         
         await msg.delete()
 
     except Exception as e:
         await msg.edit_text(f"❌ Сталася помилка під час обробки: {e}")
+
+    finally:
+        if os.path.exists(temp_audio_path):
+            os.remove(temp_audio_path)
 
 async def main():
     await start_web_server()
