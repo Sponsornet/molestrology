@@ -91,9 +91,16 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         image.save(img_buffer, format="JPEG")
         img_buffer.seek(0)
 
-        # Озвучка через жіночий нейроголос Polina
-        voice = "uk-UA-PolinaNeural"
-        communicate = edge_tts.Communicate(prediction_text, voice)
+        # Формуємо SSML для природної та виразної вимови
+        ssml_text = f"""<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='uk-UA'>
+            <voice name='uk-UA-PolinaNeural'>
+                <prosody rate='-8.00%' pitch='+3.00Hz'>
+                    Увага! <break time='400ms'/> {prediction_text}
+                </prosody>
+            </voice>
+        </speak>"""
+
+        communicate = edge_tts.Communicate(ssml_text, "uk-UA-PolinaNeural")
         await communicate.save(temp_audio_path)
 
         # Відправка фото та голосового повідомлення
