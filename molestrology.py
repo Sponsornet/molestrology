@@ -59,7 +59,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         Проаналізуй це фото для гумористичного додатка Molestrology. 
         1. Знайди всі родимки, ластовиння або помітні цятки на шкірі. Поверни їх координати [ymin, xmin, ymax, xmax] у діапазоні від 0 до 1000.
         2. Придумай СУПЕР ВЕСЕЛИЙ, комічний та іронічний астрологічний прогноз (3-4 речення). 
-           Обов'язково використовуй емоційні вигуки на початку та в тексті (наприклад: "Ого!", "Нічого собі!", "Ага!", "Охо-хо!", "Увага!"), більше знаків оклику (!) та питальних речень. Це потрібно для живої інтонації робота-диктора!
+           Обов'язково додавай емоційні вигуки українською мовою (наприклад: "Ого!", "Нічого собі!", "Ага!", "Охо-хо!", "Увага!"), більше знаків оклику (!) та питальних речень, щоб озвучка звучала максимально весело та емоційно!
         
         Поверни відповідь СУВОРО у форматі JSON:
         {
@@ -103,16 +103,9 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Очищаємо текст для озвучення
         clean_speech_text = clean_text_for_tts(prediction_text)
 
-        # Перемикаємо на OstapNeural з підвищеним темпом (+10%) та піднятим тоном (+6Hz)
-        ssml_text = f"""<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='uk-UA'>
-    <voice name='uk-UA-OstapNeural'>
-        <prosody rate='+10.00%' pitch='+6.00Hz'>
-            {clean_speech_text}
-        </prosody>
-    </voice>
-</speak>"""
-
-        communicate = edge_tts.Communicate(ssml_text, "uk-UA-OstapNeural")
+        # Стабільний запуск PolinaNeural з прискоренням та тоном без обгортки в SSML
+        voice = "uk-UA-PolinaNeural"
+        communicate = edge_tts.Communicate(clean_speech_text, voice, rate="+6%", pitch="+4Hz")
         await communicate.save(temp_audio_path)
 
         # Відправка фото та голосового повідомлення
