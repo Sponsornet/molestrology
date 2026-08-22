@@ -1,6 +1,7 @@
 import io
 import json
 import os
+import re
 import asyncio
 from PIL import Image, ImageDraw
 import edge_tts
@@ -28,6 +29,16 @@ async def start_web_server():
     port = int(os.environ.get("PORT", 10000))
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
+
+def clean_text_for_tts(text: str) -> str:
+    """Очищає текст від емодзі, спецсимволів та латини для чистого озвучення"""
+    # Видаляємо емодзі та неосновні символи
+    text = re.sub(r'[^\w\s,.!?-А-Яа-яЄєІіЇїҐґ]', '', text)
+    # Видаляємо випадкові латинські літери або залишкові спецсимволи
+    text = re.sub(r'[a-zA-Z]+', '', text)
+    # Замінюємо множинні пробіли на один
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
 
 # --- ЛОГІКА БОТА ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -91,16 +102,12 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         image.save(img_buffer, format="JPEG")
         img_buffer.seek(0)
 
-        # Формуємо SSML для природної та виразної вимови
-        ssml_text = f"""<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='uk-UA'>
-            <voice name='uk-UA-PolinaNeural'>
-                <prosody rate='-8.00%' pitch='+3.00Hz'>
-                    Увага! <break time='400ms'/> {prediction_text}
-                </prosody>
-            </voice>
-        </speak>"""
+        # Очищаємо текст для озвучення від сміттєвих символів
+        clean_speech_text = clean_text_for_tts(prediction_text)
 
-        communicate = edge_tts.Communicate(ssml_text, "uk-UA-PolinaNeural")
+        # Озвучка через PolinaNeural
+        voice = "uk-UA-PolinaNeural"
+        communicate = edge_tts.Communicate(clean_speech_text, voice, rate="-5%")
         await communicate.save(temp_audio_path)
 
         # Відправка фото та голосового повідомлення
