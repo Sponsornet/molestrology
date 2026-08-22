@@ -32,11 +32,8 @@ async def start_web_server():
 
 def clean_text_for_tts(text: str) -> str:
     """Очищає текст від емодзі, спецсимволів та латини для чистого озвучення"""
-    # Видаляємо емодзі та неосновні символи
     text = re.sub(r'[^\w\s,.!?-А-Яа-яЄєІіЇїҐґ]', '', text)
-    # Видаляємо випадкові латинські літери або залишкові спецсимволи
     text = re.sub(r'[a-zA-Z]+', '', text)
-    # Замінюємо множинні пробіли на один
     text = re.sub(r'\s+', ' ', text).strip()
     return text
 
@@ -61,7 +58,8 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         prompt = """
         Проаналізуй це фото для гумористичного додатка Molestrology. 
         1. Знайди всі родимки, ластовиння або помітні цятки на шкірі. Поверни їх координати [ymin, xmin, ymax, xmax] у діапазоні від 0 до 1000.
-        2. Придумай короткий, кумедний, іронічний та містичний астрологічний прогноз (3-4 речення) на основі з'єднаних родимок-сузір'їв.
+        2. Придумай СУПЕР ВЕСЕЛИЙ, комічний та іронічний астрологічний прогноз (3-4 речення). 
+           Обов'язково використовуй емоційні вигуки на початку та в тексті (наприклад: "Ого!", "Нічого собі!", "Ага!", "Охо-хо!", "Увага!"), більше знаків оклику (!) та питальних речень. Це потрібно для живої інтонації робота-диктора!
         
         Поверни відповідь СУВОРО у форматі JSON:
         {
@@ -80,7 +78,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         data = json.loads(response.text)
         moles = data.get("moles", [])
-        prediction_text = data.get("prediction", "Зірки мовчать, але ваші родимки утворюють дивовижне сузір'я!")
+        prediction_text = data.get("prediction", "Ого! Зірки мовчать, але ваші родимки утворюють дивовижне сузір'я!")
 
         # Малюємо точки та сузір'я
         draw = ImageDraw.Draw(image)
@@ -102,12 +100,19 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         image.save(img_buffer, format="JPEG")
         img_buffer.seek(0)
 
-        # Очищаємо текст для озвучення від сміттєвих символів
+        # Очищаємо текст для озвучення
         clean_speech_text = clean_text_for_tts(prediction_text)
 
-        # Озвучка через PolinaNeural
-        voice = "uk-UA-PolinaNeural"
-        communicate = edge_tts.Communicate(clean_speech_text, voice, rate="-5%")
+        # Перемикаємо на OstapNeural з підвищеним темпом (+10%) та піднятим тоном (+6Hz)
+        ssml_text = f"""<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='uk-UA'>
+    <voice name='uk-UA-OstapNeural'>
+        <prosody rate='+10.00%' pitch='+6.00Hz'>
+            {clean_speech_text}
+        </prosody>
+    </voice>
+</speak>"""
+
+        communicate = edge_tts.Communicate(ssml_text, "uk-UA-OstapNeural")
         await communicate.save(temp_audio_path)
 
         # Відправка фото та голосового повідомлення
@@ -133,8 +138,9 @@ async def main():
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     
     await app.initialize()
+    await app.bot.delete_webhook(drop_pending_updates=True)
     await app.start()
-    await app.updater.start_polling()
+    await app.updater.start_polling(drop_pending_updates=True)
     
     await asyncio.Event().wait()
 
