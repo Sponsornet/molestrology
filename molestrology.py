@@ -1,6 +1,15 @@
+import os
+import subprocess
+import sys
+
+# Автоматичне оновлення edge-tts до найновішої версії при кожному запуску
+try:
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "edge-tts"])
+except Exception as e:
+    print(f"Помилка оновлення edge-tts: {e}")
+
 import io
 import json
-import os
 import re
 import asyncio
 from PIL import Image, ImageDraw
