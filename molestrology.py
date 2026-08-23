@@ -57,16 +57,18 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         width, height = image.size
 
         prompt = """
-        Ти — грайлива, дерзка, дотепна та кумедна астрологиня-сваха з додатка Molestrology. 
+        Ти — грайлива, дерзка, дуже дотепна та кумедна українська астрологиня-сваха з додатка Molestrology. 
         Проаналізуй це фото шкіри:
         1. Знайди всі родимки або цятки. Поверни їх координати [ymin, xmin, ymax, xmax] у діапазоні від 0 до 1000.
-        2. Напиши ВЕСЕЛИЙ, легкий і грайливий ЛЮБОВНИЙ гороскоп (3 короткі речення). 
+        2. Напиши УНІКАЛЬНИЙ, ВЕСЕЛИЙ і грайливий ЛЮБОВНИЙ гороскоп (3 короткі речення). 
 
-        Вимоги до тексту:
-        - ЖОДНИХ згадок про "диван", "каструлі" та "3-тю годину ночі"!
-        - Придумай смішну назву для сузір'я на тему любовного вайбу (наприклад: «Сузір'я Фатального Звабника», «Марс у Гаражі», «Пікап-Майстер 3000»).
-        - Дай 2 конкретні кумедні поради для побачення: у чому піти (наприклад: "одягни парадні шкарпетки", "натягни кращий штормовник", "вдягни куртку з чистими кишенями") та КУДИ запросити/піти (наприклад: "на шаурму під ліхтарем", "на романтичну заміну мастила", "у будівельний гіпермаркет", "на каву біля гаражів").
-        - Подача має бути бадьорою, грайливою, з гумором і впевненим пікап-підколом.
+        Вимоги до генерації:
+        - Завжди вигадуй СВІЖІ, абсурдні та смішні варіанти! Не повторюй банальні фрази.
+        - Вигадай нову кумедну назву для сузір'я кохання (кожного разу іншу, без шаблонних слів).
+        - Дай 2 СВІЖІ та нестандартні поради для зваблювання: 
+          * У чому піти (щось кумедне з повсякденного або святкового гардероба).
+          * Куди конкретно запросити на побачення (вигадай оригінальне локальне місце або нестандартну ситуацію).
+        - Подача має бути бадьорою, з гумором, легкою іронією та фліртом.
 
         Поверни відповідь СУВОРО у форматі JSON:
         {
@@ -75,17 +77,19 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         }
         """
 
+        # Піднімаємо температуру для різноманіття тексту
         response = client.models.generate_content(
             model='gemini-3.6-flash',
             contents=[image, prompt],
             config=types.GenerateContentConfig(
-                response_mime_type="application/json"
+                response_mime_type="application/json",
+                temperature=1.0
             )
         )
 
         data = json.loads(response.text)
         moles = data.get("moles", [])
-        prediction_text = data.get("prediction", "Ого, які флюїди! Зірки радять вдягти парадні шкарпетки й вести її на шаурму — успіх гарантовано!")
+        prediction_text = data.get("prediction", "Зірки бачать шалений магнетизм! Одягай найкращий outfit та сміливо підкорюй серця!")
 
         # Малювання сузір'я
         draw = ImageDraw.Draw(image)
@@ -107,24 +111,22 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         image.save(img_buffer, format="JPEG")
         img_buffer.seek(0)
 
-        # 1. Фото з текстом
+        # 1. Відправка фото з текстом
         await update.message.reply_photo(photo=img_buffer, caption=f"💘 **Любовний астропрогноз:**\n\n{prediction_text}")
         
-        # 2. Озвучка жіночим голосом через файл (найстабільніший спосіб)
+        # 2. Озвучка жіночим голосом через файл з обробкою помилок
         clean_speech = clean_text_for_tts(prediction_text)
         if clean_speech:
             try:
                 female_voice = "uk-UA-LadaNeural"
-                communicate = edge_tts.Communicate(clean_speech, female_voice)
-                
-                # Запис у файл на диску
-                await communicate.save(temp_audio_path)
+                tts = edge_tts.Communicate(text=clean_speech, voice=female_voice)
+                await tts.save(temp_audio_path)
 
                 if os.path.exists(temp_audio_path) and os.path.getsize(temp_audio_path) > 0:
-                    with open(temp_audio_path, "rb") as audio_file:
-                        await update.message.reply_voice(voice=audio_file)
-            except Exception as tts_error:
-                print(f"Помилка TTS: {tts_error}")
+                    with open(temp_audio_path, "rb") as voice_file:
+                        await update.message.reply_voice(voice=voice_file)
+            except Exception as tts_err:
+                print(f"Помилка озвучки TTS: {tts_err}")
 
         await msg.delete()
 
@@ -136,7 +138,6 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
 
     finally:
-        # Видаляємо тимчасовий аудіофайл після відправки
         if os.path.exists(temp_audio_path):
             try:
                 os.remove(temp_audio_path)
