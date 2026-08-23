@@ -33,8 +33,8 @@ async def start_web_server():
     await site.start()
 
 def clean_text_for_tts(text: str) -> str:
-    """Очищення тексту від спецсимволів та лапок для стійкості TTS"""
-    text = text.replace('*', '').replace('**', '').replace('«', '').replace('»', '').replace('"', '')
+    """Очищення тексту для Edge-TTS"""
+    text = text.replace('*', '').replace('«', '').replace('»', '').replace('"', '')
     text = re.sub(r'[^\w\s,.!?-А-Яа-яЄєІіЇїҐґ]', ' ', text)
     text = re.sub(r'\s+', ' ', text).strip()
     return text
@@ -48,7 +48,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = await update.message.reply_text("✨ Зчитую розташування зірок та родимок (зачекайте 10-15 сек)...")
-    temp_audio_path = f"voice_{update.message.message_id}.mp3"
     
     try:
         photo_file = await update.message.photo[-1].get_file()
@@ -67,7 +66,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         - Пиши жорстко, з гумором, абсурдом і підколами. Використовуй емоційні виклики («Ого!», «Та ти шо!», «Стій!», «Алло!», «Тю!»).
         - Жартуй про побут, лінь, гроші, дивні звички, котів, диван, незакриті гештальти або раптові дивні бажання о 3-й ночі.
         - Можна використовувати легкий живий розмовний суржик або міські жаргонізми.
-        - Уникай нудних і ввічливих шаблонів! Текст має звучати так, ніби його емоційно наговорили на диктофон після трьох чашок міцної кави.
+        - Уникай нудних і ввічливих шаблонів!
         
         Поверни відповідь СУВОРО у форматі JSON:
         {
@@ -108,21 +107,30 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         image.save(img_buffer, format="JPEG")
         img_buffer.seek(0)
 
-        # 1. Надсилаємо підготовлене фото з текстом
+        # 1. Надсилаємо фото з текстом
         await update.message.reply_photo(photo=img_buffer, caption=f"🔮 **Твій астропрогноз:**\n\n{prediction_text}")
         
-        # 2. Озвучка Edge-TTS (підвищено темп і інтонацію для живого звучання)
+        # 2. Озвучка Edge-TTS через стрим в пам'ять
         clean_speech = clean_text_for_tts(prediction_text)
         if clean_speech:
-            voices = ["uk-UA-LadaNeural", "uk-UA-OstapNeural"]
-            chosen_voice = random.choice(voices)
+            try:
+                voices = ["uk-UA-LadaNeural", "uk-UA-OstapNeural"]
+                chosen_voice = random.choice(voices)
 
-            communicate = edge_tts.Communicate(clean_speech, chosen_voice, rate="+12%", pitch="+4Hz")
-            await communicate.save(temp_audio_path)
+                # Без параметрів rate/pitch, які спричиняють помилки сервера Microsoft
+                communicate = edge_tts.Communicate(clean_speech, chosen_voice)
+                
+                audio_bytes = bytearray()
+                async for chunk in communicate.stream():
+                    if chunk["type"] == "audio":
+                        audio_bytes.extend(chunk["data"])
 
-            if os.path.exists(temp_audio_path) and os.path.getsize(temp_audio_path) > 0:
-                with open(temp_audio_path, "rb") as audio_file:
-                    await update.message.reply_voice(voice=audio_file)
+                if audio_bytes:
+                    voice_buffer = io.BytesIO(audio_bytes)
+                    voice_buffer.name = "voice.mp3"
+                    await update.message.reply_voice(voice=voice_buffer)
+            except Exception as tts_error:
+                print(f"Помилка TTS: {tts_error}")
 
         await msg.delete()
 
@@ -132,13 +140,6 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await msg.edit_text(f"❌ Сталася помилка під час обробки: {e}")
         except:
             pass
-
-    finally:
-        if os.path.exists(temp_audio_path):
-            try:
-                os.remove(temp_audio_path)
-            except Exception:
-                pass
 
 async def main():
     await start_web_server()
