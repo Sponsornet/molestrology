@@ -3,7 +3,6 @@ import json
 import os
 import re
 import asyncio
-import random
 from PIL import Image, ImageDraw
 import edge_tts
 from google import genai
@@ -42,12 +41,12 @@ def clean_text_for_tts(text: str) -> str:
 # --- ЛОГІКА БОТА ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🔮 **Molestrology Bot**\n\n"
-        "Надішли мені фотографію шкіри з родимками, і я прочитаю твоє астрологічне сузір'я!"
+        "💘 **Molestrology Love Edition**\n\n"
+        "Надішли мені фото шкіри з родимками, і я розкрию твоє сузір'я кохання, підкажу в чому йти на побачення та куди вести другу половинку!"
     )
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = await update.message.reply_text("✨ Зчитую розташування зірок та родимок (зачекайте 10-15 сек)...")
+    msg = await update.message.reply_text("✨ Зчитую любовні флюїди та родимки (зачекайте 10-15 сек)...")
     
     try:
         photo_file = await update.message.photo[-1].get_file()
@@ -57,17 +56,17 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         width, height = image.size
 
         prompt = """
-        Ти — ексцентрична, трохи божевільна та вкрай гостра на язик ворожка-стендаперка з розважального додатка Molestrology. 
-        Проаналізуй це фото:
-        1. Знайди всі родимки, ластовиння або помітні цятки на шкірі. Поверни їх координати [ymin, xmin, ymax, xmax] у діапазоні від 0 до 1000.
-        2. Придумай НЕЙМОВІРНО СМІШНИЙ, вибуховий, сатиричний та живий астрологічний прогноз (3-4 речення). 
-           
+        Ти — грайлива, дерзка, дотепна та кумедна астрологиня-сваха з додатка Molestrology. 
+        Проаналізуй це фото шкіри:
+        1. Знайди всі родимки або цятки. Поверни їх координати [ymin, xmin, ymax, xmax] у діапазоні від 0 до 1000.
+        2. Напиши ВЕСЕЛИЙ, легкий і грайливий ЛЮБОВНИЙ гороскоп (3 короткі речення). 
+
         Вимоги до тексту:
-        - Пиши жорстко, з гумором, абсурдом і підколами. Використовуй емоційні виклики («Ого!», «Та ти шо!», «Стій!», «Алло!», «Тю!»).
-        - Жартуй про побут, лінь, гроші, дивні звички, котів, диван, незакриті гештальти або раптові дивні бажання о 3-й ночі.
-        - Можна використовувати легкий живий розмовний суржик або міські жаргонізми.
-        - Уникай нудних і ввічливих шаблонів!
-        
+        - ЖОДНИХ згадок про "диван", "каструлі" та "3-тю годину ночі"!
+        - Придумай смішну назву для сузір'я на тему любовного вайбу (наприклад: «Сузір'я Фатального Звабника», «Марс у Гаражі», «Пікап-Майстер 3000»).
+        - Дай 2 конкретні кумедні поради для побачення: у чому піти (наприклад: "одягни парадні шкарпетки", "натягни кращий штормовник", "вдягни куртку з чистими кишенями") та КУДИ запросити/піти (наприклад: "на шаурму під ліхтарем", "на романтичну заміну мастила", "у будівельний гіпермаркет", "на каву біля гаражів").
+        - Подача має бути бадьорою, грайливою, з гумором і впевненим пікап-підколом.
+
         Поверни відповідь СУВОРО у форматі JSON:
         {
           "moles": [[ymin, xmin, ymax, xmax]],
@@ -85,7 +84,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         data = json.loads(response.text)
         moles = data.get("moles", [])
-        prediction_text = data.get("prediction", "Ой, та тут ціле сузір'я хаосу! Зірки радять триматися за каструлі й не вірити обіцянкам котів.")
+        prediction_text = data.get("prediction", "Ого, які флюїди! Зірки радять вдягти парадні шкарпетки й вести її на шаурму — успіх гарантовано!")
 
         # Малювання сузір'я
         draw = ImageDraw.Draw(image)
@@ -107,18 +106,15 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         image.save(img_buffer, format="JPEG")
         img_buffer.seek(0)
 
-        # 1. Надсилаємо фото з текстом
-        await update.message.reply_photo(photo=img_buffer, caption=f"🔮 **Твій астропрогноз:**\n\n{prediction_text}")
+        # 1. Текст + фото
+        await update.message.reply_photo(photo=img_buffer, caption=f"💘 **Любовний астропрогноз:**\n\n{prediction_text}")
         
-        # 2. Озвучка Edge-TTS через стрим в пам'ять
+        # 2. Озвучка строго жіночим голосом (Lada) в пам'ять
         clean_speech = clean_text_for_tts(prediction_text)
         if clean_speech:
             try:
-                voices = ["uk-UA-LadaNeural", "uk-UA-OstapNeural"]
-                chosen_voice = random.choice(voices)
-
-                # Без параметрів rate/pitch, які спричиняють помилки сервера Microsoft
-                communicate = edge_tts.Communicate(clean_speech, chosen_voice)
+                female_voice = "uk-UA-LadaNeural"
+                communicate = edge_tts.Communicate(clean_speech, female_voice)
                 
                 audio_bytes = bytearray()
                 async for chunk in communicate.stream():
