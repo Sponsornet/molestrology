@@ -10,31 +10,16 @@ from google import genai
 from google.genai import types
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
-from aiohttp import web
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 
-# --- ВЕБ-СЕРВЕР ДЛЯ РЕНДЕРА ---
-async def handle_ping(request):
-    return web.Response(text="Molestrology Bot is active!")
-
-async def start_web_server():
-    app = web.Application()
-    app.router.add_get('/', handle_ping)
-    app.router.add_get('/health', handle_ping)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    port = int(os.environ.get("PORT", 10000))
-    site = web.TCPSite(runner, "0.0.0.0", port)
-    await site.start()
-
 def clean_text_for_tts(text: str) -> str:
-    """Очищає текст від емодзі, спецсимволів та латини для чистого озвучення"""
-    text = re.sub(r'[^\w\s,.!?-А-Яа-яЄєІіЇїҐґ]', '', text)
-    text = re.sub(r'[a-zA-Z]+', '', text)
+    """Очищення тексту від спецсимволів для TTS"""
+    text = text.replace('*', '').replace('**', '')
+    text = re.sub(r'[^\w\s,.!?-А-Яа-яЄєІіЇїҐґ]', ' ', text)
     text = re.sub(r'\s+', ' ', text).strip()
     return text
 
@@ -46,7 +31,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = await update.message.reply_text("✨ Зчитую розташування зірок та родимок (зачекайте 15-20 сек)...")
+    msg = await update.message.reply_text("✨ Зчитую розташування зірок та родимок (зачекайте 10-15 сек)...")
     temp_audio_path = f"voice_{update.message.message_id}.mp3"
     
     try:
@@ -70,7 +55,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         """
 
         response = client.models.generate_content(
-            model='gemini-3.6-flash',
+            model='gemini-2.5-flash',
             contents=[image, prompt],
             config=types.GenerateContentConfig(
                 response_mime_type="application/json"
@@ -81,7 +66,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         moles = data.get("moles", [])
         prediction_text = data.get("prediction", "Ой, та тут ціле сузір'я хаосу! Зірки радять триматися за каструлі й не вірити обіцянкам котів.")
 
-        # Малюємо точки та сузір'я
+        # Малювання сузір'я
         draw = ImageDraw.Draw(image)
         centers = []
 
@@ -101,45 +86,48 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         image.save(img_buffer, format="JPEG")
         img_buffer.seek(0)
 
-        # Очищаємо текст для озвучення
-        clean_speech_text = clean_text_for_tts(prediction_text)
-
-        # Можемо обирати між LadaNeural та DmytroNeural (або випадково, або встановити один)
-        # Використаємо LadaNeural з трохи живішим темпом
-        voices = ["uk-UA-LadaNeural", "uk-UA-PolinaNeural"]
-        chosen_voice = random.choice(voices) # або пропиши жорстко "uk-UA-LadaNeural"
-
-        communicate = edge_tts.Communicate(clean_speech_text, chosen_voice, rate="+8%", pitch="+3Hz")
-        await communicate.save(temp_audio_path)
-
-        # Відправка фото та голосового повідомлення
+        # Надсилання зображення
         await update.message.reply_photo(photo=img_buffer, caption=f"🔮 **Твій астропрогноз:**\n\n{prediction_text}")
-        
-        with open(temp_audio_path, "rb") as audio_file:
-            await update.message.reply_voice(voice=audio_file, filename="voice.ogg")
-        
         await msg.delete()
 
+        # Генерація та надсилання аудіо
+        clean_speech_text = clean_text_for_tts(prediction_text)
+        if clean_speech_text:
+            try:
+                voices = ["uk-UA-LadaNeural", "uk-UA-OstapNeural"]
+                chosen_voice = random.choice(voices)
+
+                communicate = edge_tts.Communicate(clean_speech_text, chosen_voice, rate="+8%", pitch="+3Hz")
+                await communicate.save(temp_audio_path)
+                
+                if os.path.exists(temp_audio_path) and os.path.getsize(temp_audio_path) > 0:
+                    with open(temp_audio_path, "rb") as audio_file:
+                        await update.message.reply_voice(voice=audio_file, filename="voice.ogg")
+            except Exception as tts_err:
+                print(f"Помилка TTS: {tts_err}")
+
     except Exception as e:
-        await msg.edit_text(f"❌ Сталася помилка під час обробки: {e}")
+        print(f"Помилка: {e}")
+        try:
+            await msg.edit_text(f"❌ Сталася помилка під час обробки: {e}")
+        except:
+            pass
 
     finally:
         if os.path.exists(temp_audio_path):
-            os.remove(temp_audio_path)
+            try:
+                os.remove(temp_audio_path)
+            except Exception:
+                pass
 
-async def main():
-    await start_web_server()
-    
+def main():
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     
-    await app.initialize()
-    await app.bot.delete_webhook(drop_pending_updates=True)
-    await app.start()
-    await app.updater.start_polling(drop_pending_updates=True)
-    
-    await asyncio.Event().wait()
+    # Швидкий запуск бота без конфліктів портів та веб-серверів
+    print("Бот запускається...")
+    app.run_polling(drop_pending_updates=True)
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    main()
