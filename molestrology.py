@@ -32,7 +32,7 @@ async def start_web_server():
     await site.start()
 
 def clean_text_for_tts(text: str) -> str:
-    """Очищення тексту для Edge-TTS"""
+    """Очищення тексту від спецсимволів для стійкості TTS"""
     text = text.replace('*', '').replace('«', '').replace('»', '').replace('"', '')
     text = re.sub(r'[^\w\s,.!?-А-Яа-яЄєІіЇїҐґ]', ' ', text)
     text = re.sub(r'\s+', ' ', text).strip()
@@ -47,6 +47,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = await update.message.reply_text("✨ Зчитую любовні флюїди та родимки (зачекайте 10-15 сек)...")
+    temp_audio_path = f"voice_{update.message.message_id}.mp3"
     
     try:
         photo_file = await update.message.photo[-1].get_file()
@@ -106,25 +107,22 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         image.save(img_buffer, format="JPEG")
         img_buffer.seek(0)
 
-        # 1. Текст + фото
+        # 1. Фото з текстом
         await update.message.reply_photo(photo=img_buffer, caption=f"💘 **Любовний астропрогноз:**\n\n{prediction_text}")
         
-        # 2. Озвучка строго жіночим голосом (Lada) в пам'ять
+        # 2. Озвучка жіночим голосом через файл (найстабільніший спосіб)
         clean_speech = clean_text_for_tts(prediction_text)
         if clean_speech:
             try:
                 female_voice = "uk-UA-LadaNeural"
                 communicate = edge_tts.Communicate(clean_speech, female_voice)
                 
-                audio_bytes = bytearray()
-                async for chunk in communicate.stream():
-                    if chunk["type"] == "audio":
-                        audio_bytes.extend(chunk["data"])
+                # Запис у файл на диску
+                await communicate.save(temp_audio_path)
 
-                if audio_bytes:
-                    voice_buffer = io.BytesIO(audio_bytes)
-                    voice_buffer.name = "voice.mp3"
-                    await update.message.reply_voice(voice=voice_buffer)
+                if os.path.exists(temp_audio_path) and os.path.getsize(temp_audio_path) > 0:
+                    with open(temp_audio_path, "rb") as audio_file:
+                        await update.message.reply_voice(voice=audio_file)
             except Exception as tts_error:
                 print(f"Помилка TTS: {tts_error}")
 
@@ -136,6 +134,14 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await msg.edit_text(f"❌ Сталася помилка під час обробки: {e}")
         except:
             pass
+
+    finally:
+        # Видаляємо тимчасовий аудіофайл після відправки
+        if os.path.exists(temp_audio_path):
+            try:
+                os.remove(temp_audio_path)
+            except Exception:
+                pass
 
 async def main():
     await start_web_server()
