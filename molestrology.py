@@ -1,15 +1,6 @@
-import os
-import subprocess
-import sys
-
-# Оновлюємо edge-tts при запуску
-try:
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "edge-tts"])
-except Exception as e:
-    print(f"Помилка оновлення edge-tts: {e}")
-
 import io
 import json
+import os
 import re
 import asyncio
 from PIL import Image, ImageDraw
@@ -40,11 +31,9 @@ async def start_web_server():
     await site.start()
 
 def clean_text_for_tts(text: str) -> str:
-    """Очищає текст від усього зайвого для коректного озвучування"""
-    # Замінюємо деякі символи на букви або пробіли
+    """Очищає текст від емодзі та спецсимволів для чистого озвучення"""
     text = text.replace('*', '').replace('**', '')
-    # Залишаємо тільки букви (українські/латиницю), цифри та базові розділові знаки
-    text = re.sub(r'[^\w\s,.!?-А-Яа-яЄєІіЇїҐґ', ' ', text)
+    text = re.sub(r'[^\w\s,.!?-А-Яа-яЄєІіЇїҐґ]', ' ', text)
     text = re.sub(r'\s+', ' ', text).strip()
     return text
 
@@ -52,7 +41,7 @@ def clean_text_for_tts(text: str) -> str:
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🔮 **Molestrology Bot**\n\n"
-        "Надішли мені фотографію шкіри з родимками, і я складу унікальний астрологічний прогноз сузір'я!"
+        "Надішли мені фотографію шкіри з родимками, і я прочитаю твоє астрологічне сузір'я!"
     )
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -67,9 +56,9 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         width, height = image.size
 
         prompt = """
-        Проаналізуй це фото для сервісу астрології за родимками 'Molestrology'. 
-        1. Знайди всі родимки, ластовиння або цятки на шкірі. Поверни їх координати [ymin, xmin, ymax, xmax] у діапазоні від 0 до 1000.
-        2. Придумай цікавий, красивий та трохи містичний астрологічний прогноз українською мовою (3-4 речення). Без зайвого сленгу — пиши грамотно, елегантно та з легким гумором.
+        Проаналізуй це фото для гумористичного додатка Molestrology. 
+        1. Знайди всі родимки, ластовиння або помітні цятки на шкірі. Поверни їх координати [ymin, xmin, ymax, xmax] у діапазоні від 0 до 1000.
+        2. Придумай ультра-веселий, жартівливий астрологічний прогноз (3-4 речення) у стилі сучасного підлітка (використовуй слова типу "капець", "вайб", "треш", енергійні вигуки та знаки оклику).
         
         Поверни відповідь СУВОРО у форматі JSON:
         {
@@ -78,8 +67,9 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         }
         """
 
+        # Використовуємо актуальну і робочу модель gemini-3.6-flash
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-3.6-flash',
             contents=[image, prompt],
             config=types.GenerateContentConfig(
                 response_mime_type="application/json"
@@ -88,7 +78,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         data = json.loads(response.text)
         moles = data.get("moles", [])
-        prediction_text = data.get("prediction", "Зірки на цьому сузір'ї складаються у схемі неймовірної вдачі. Сьогодні на вас чекають приємні сюрпризи та гармонія у справах!")
+        prediction_text = data.get("prediction", "Блін, тут повний вайб хаосу! Зірки кажуть, що сьогодні ти головна зірка цього трешу!")
 
         # Малюємо точки та сузір'я
         draw = ImageDraw.Draw(image)
@@ -114,12 +104,11 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_photo(photo=img_buffer, caption=f"🔮 **Твій астропрогноз:**\n\n{prediction_text}")
         await msg.delete()
 
-        # Генерація та надсилання аудіо
+        # Генерація та надсилання аудіо (використовуємо жіночий голос Lada або чоловічий Ostap)
         clean_speech_text = clean_text_for_tts(prediction_text)
         if clean_speech_text:
             try:
-                # Використовуємо інший голос, який стабільніше працює в edge-tts
-                voice = "uk-UA-OstapNeural" 
+                voice = "uk-UA-LadaNeural"
                 communicate = edge_tts.Communicate(clean_speech_text, voice)
                 await communicate.save(temp_audio_path)
                 
@@ -127,7 +116,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     with open(temp_audio_path, "rb") as audio_file:
                         await update.message.reply_voice(voice=audio_file, filename="voice.ogg")
                 else:
-                    print("Аудіо файл не записався або порожній.")
+                    print("Аудіо файл не записався.")
             except Exception as tts_err:
                 print(f"Помилка генерації голосу: {tts_err}")
 
