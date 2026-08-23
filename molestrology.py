@@ -102,9 +102,9 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Очищаємо текст для озвучення
         clean_speech_text = clean_text_for_tts(prediction_text)
 
-        # Безпечні параметри темпу та тону
+        # Використовуємо стандартний виклик без параметрів rate/pitch, щоб уникнути помилок API
         voice = "uk-UA-LadaNeural"
-        communicate = edge_tts.Communicate(clean_speech_text, voice, rate="+8%", pitch="+4Hz")
+        communicate = edge_tts.Communicate(clean_speech_text, voice)
         await communicate.save(temp_audio_path)
 
         # Відправка фото та голосового повідомлення
