@@ -58,15 +58,21 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         width, height = image.size
 
         prompt = """
-        Проаналізуй це фото для гумористичного додатка Molestrology. 
+        Ти — ексцентрична, трохи божевільна та вкрай гостра на язик ворожка-стендаперка з розважального додатка Molestrology. 
+        Проаналізуй це фото:
         1. Знайди всі родимки, ластовиння або помітні цятки на шкірі. Поверни їх координати [ymin, xmin, ymax, xmax] у діапазоні від 0 до 1000.
-        2. Придумай неймовірно смішний, сатиричний та живий астрологічний прогноз (3-4 речення). 
-           Пиши так, ніби це говорить стендап-комік або ексцентрична ворожка. Використовуй розмовні слова, жарти, окличні та питальні знаки.
+        2. Придумай НЕЙМОВІРНО СМІШНИЙ, вибуховий, сатиричний та живий астрологічний прогноз (3-4 речення). 
+           
+        Вимоги до тексту:
+        - Пиши жорстко, з гумором, абсурдом і підколами. Використовуй емоційні виклики («Ого!», «Та ти шо!», «Стій!», «Алло!», «Тю!»).
+        - Жартуй про побут, лінь, гроші, дивні звички, котів, диван, незакриті гештальти або раптові дивні бажання о 3-й ночі.
+        - Можна використовувати легкий живий розмовний суржик або міські жаргонізми.
+        - Уникай нудних і ввічливих шаблонів! Текст має звучати так, ніби його емоційно наговорили на диктофон після трьох чашок міцної кави.
         
         Поверни відповідь СУВОРО у форматі JSON:
         {
           "moles": [[ymin, xmin, ymax, xmax]],
-          "prediction": "Текст прогнозу українською мовою..."
+          "prediction": "Текст прогнозу..."
         }
         """
 
@@ -105,20 +111,17 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # 1. Надсилаємо підготовлене фото з текстом
         await update.message.reply_photo(photo=img_buffer, caption=f"🔮 **Твій астропрогноз:**\n\n{prediction_text}")
         
-        # 2. Озвучка Edge-TTS
+        # 2. Озвучка Edge-TTS (підвищено темп і інтонацію для живого звучання)
         clean_speech = clean_text_for_tts(prediction_text)
         if clean_speech:
             voices = ["uk-UA-LadaNeural", "uk-UA-OstapNeural"]
             chosen_voice = random.choice(voices)
 
-            communicate = edge_tts.Communicate(clean_speech, chosen_voice, rate="+5%", pitch="+0Hz")
-            
-            # ВАЖЛИВО: Обов'язково з await!
+            communicate = edge_tts.Communicate(clean_speech, chosen_voice, rate="+12%", pitch="+4Hz")
             await communicate.save(temp_audio_path)
 
             if os.path.exists(temp_audio_path) and os.path.getsize(temp_audio_path) > 0:
                 with open(temp_audio_path, "rb") as audio_file:
-                    # Надсилаємо як голосове повідомлення або як аудіофайл
                     await update.message.reply_voice(voice=audio_file)
 
         await msg.delete()
