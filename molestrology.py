@@ -33,8 +33,8 @@ async def start_web_server():
     await site.start()
 
 def clean_text_for_tts(text: str) -> str:
-    """Очищення тексту від спецсимволів для TTS"""
-    text = text.replace('*', '').replace('**', '')
+    """Очищення тексту від спецсимволів та лапок для стійкості TTS"""
+    text = text.replace('*', '').replace('**', '').replace('«', '').replace('»', '').replace('"', '')
     text = re.sub(r'[^\w\s,.!?-А-Яа-яЄєІіЇїҐґ]', ' ', text)
     text = re.sub(r'\s+', ' ', text).strip()
     return text
@@ -102,28 +102,29 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         image.save(img_buffer, format="JPEG")
         img_buffer.seek(0)
 
-        # Надсилання зображення
+        # 1. Надсилаємо підготовлене фото з текстом
         await update.message.reply_photo(photo=img_buffer, caption=f"🔮 **Твій астропрогноз:**\n\n{prediction_text}")
+        
+        # 2. Озвучка Edge-TTS
+        clean_speech = clean_text_for_tts(prediction_text)
+        if clean_speech:
+            voices = ["uk-UA-LadaNeural", "uk-UA-OstapNeural"]
+            chosen_voice = random.choice(voices)
+
+            communicate = edge_tts.Communicate(clean_speech, chosen_voice, rate="+5%", pitch="+0Hz")
+            
+            # ВАЖЛИВО: Обов'язково з await!
+            await communicate.save(temp_audio_path)
+
+            if os.path.exists(temp_audio_path) and os.path.getsize(temp_audio_path) > 0:
+                with open(temp_audio_path, "rb") as audio_file:
+                    # Надсилаємо як голосове повідомлення або як аудіофайл
+                    await update.message.reply_voice(voice=audio_file)
+
         await msg.delete()
 
-        # Генерація та надсилання аудіо
-        clean_speech_text = clean_text_for_tts(prediction_text)
-        if clean_speech_text:
-            try:
-                voices = ["uk-UA-LadaNeural", "uk-UA-OstapNeural"]
-                chosen_voice = random.choice(voices)
-
-                communicate = edge_tts.Communicate(clean_speech_text, chosen_voice, rate="+8%", pitch="+3Hz")
-                await communicate.save(temp_audio_path)
-                
-                if os.path.exists(temp_audio_path) and os.path.getsize(temp_audio_path) > 0:
-                    with open(temp_audio_path, "rb") as audio_file:
-                        await update.message.reply_voice(voice=audio_file, filename="voice.ogg")
-            except Exception as tts_err:
-                print(f"Помилка TTS: {tts_err}")
-
     except Exception as e:
-        print(f"Помилка: {e}")
+        print(f"Помилка обробки: {e}")
         try:
             await msg.edit_text(f"❌ Сталася помилка під час обробки: {e}")
         except:
@@ -144,18 +145,21 @@ async def main():
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     
     await app.initialize()
-    # Очищаємо всі застарілі сесії та з'єднання Telegram перед стартом
-    await app.bot.delete_webhook(drop_pending_updates=True)
     await app.start()
-    
-    print("Бот запущений...")
-    try:
-        await app.updater.start_polling(drop_pending_updates=True)
-    except Conflict:
-        print("Виявлено конфлікт екземплярів, чекаємо 5 секунд перед повтором...")
-        await asyncio.sleep(5)
-        await app.updater.start_polling(drop_pending_updates=True)
-        
+
+    while True:
+        try:
+            await app.bot.delete_webhook(drop_pending_updates=True)
+            await app.updater.start_polling(drop_pending_updates=True)
+            print("Бот успішно запустився і слухає повідомлення!")
+            break
+        except Conflict:
+            print("Старий процес Render ще працює. Чекаємо 10 секунд...")
+            await asyncio.sleep(10)
+        except Exception as e:
+            print(f"Помилка запуску: {e}")
+            await asyncio.sleep(5)
+
     await asyncio.Event().wait()
 
 if __name__ == '__main__':
