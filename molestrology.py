@@ -99,21 +99,22 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         image.save(img_buffer, format="JPEG")
         img_buffer.seek(0)
 
-        # Очищаємо текст для озвучення
-        clean_speech_text = clean_text_for_tts(prediction_text)
-
-        # Використовуємо стандартний виклик без параметрів rate/pitch, щоб уникнути помилок API
-        voice = "uk-UA-LadaNeural"
-        communicate = edge_tts.Communicate(clean_speech_text, voice)
-        await communicate.save(temp_audio_path)
-
-        # Відправка фото та голосового повідомлення
+        # Відправка фото з описом
         await update.message.reply_photo(photo=img_buffer, caption=f"🔮 **Твій астропрогноз:**\n\n{prediction_text}")
-        
-        with open(temp_audio_path, "rb") as audio_file:
-            await update.message.reply_voice(voice=audio_file, filename="voice.ogg")
-        
         await msg.delete()
+
+        # Спроба генерації та надсилання аудіо
+        clean_speech_text = clean_text_for_tts(prediction_text)
+        if clean_speech_text:
+            try:
+                voice = "uk-UA-LadaNeural"
+                communicate = edge_tts.Communicate(clean_speech_text, voice)
+                await communicate.save(temp_audio_path)
+                
+                with open(temp_audio_path, "rb") as audio_file:
+                    await update.message.reply_voice(voice=audio_file, filename="voice.ogg")
+            except Exception as tts_err:
+                print(f"Помилка генерації голосу: {tts_err}")
 
     except Exception as e:
         await msg.edit_text(f"❌ Сталася помилка під час обробки: {e}")
