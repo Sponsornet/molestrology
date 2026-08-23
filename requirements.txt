@@ -1,5 +1,4 @@
 python-telegram-bot==20.7
 google-genai
 Pillow
-edge-tts>=7.2.6
-aiohttp
+edge-tts
