@@ -10,11 +10,27 @@ from google import genai
 from google.genai import types
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.error import Conflict
+from aiohttp import web
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 client = genai.Client(api_key=GEMINI_API_KEY)
+
+# --- ВЕБ-СЕРВЕР ДЛЯ RENDER (HEALTH CHECK) ---
+async def handle_ping(request):
+    return web.Response(text="Molestrology Bot is active!")
+
+async def start_web_server():
+    app = web.Application()
+    app.router.add_get('/', handle_ping)
+    app.router.add_get('/health', handle_ping)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.environ.get("PORT", 10000))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
 
 def clean_text_for_tts(text: str) -> str:
     """Очищення тексту від спецсимволів для TTS"""
@@ -55,7 +71,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         """
 
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-3.6-flash',
             contents=[image, prompt],
             config=types.GenerateContentConfig(
                 response_mime_type="application/json"
@@ -120,14 +136,27 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception:
                 pass
 
-def main():
+async def main():
+    await start_web_server()
+    
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     
-    # Швидкий запуск бота без конфліктів портів та веб-серверів
-    print("Бот запускається...")
-    app.run_polling(drop_pending_updates=True)
+    await app.initialize()
+    # Очищаємо всі застарілі сесії та з'єднання Telegram перед стартом
+    await app.bot.delete_webhook(drop_pending_updates=True)
+    await app.start()
+    
+    print("Бот запущений...")
+    try:
+        await app.updater.start_polling(drop_pending_updates=True)
+    except Conflict:
+        print("Виявлено конфлікт екземплярів, чекаємо 5 секунд перед повтором...")
+        await asyncio.sleep(5)
+        await app.updater.start_polling(drop_pending_updates=True)
+        
+    await asyncio.Event().wait()
 
 if __name__ == '__main__':
-    main()
+    asyncio.run(main())
