@@ -102,7 +102,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Очищаємо текст для озвучення
         clean_speech_text = clean_text_for_tts(prediction_text)
 
-        # Безпечні параметри темпу та тону, які не викликають збоїв у edge-tts
+        # Безпечні параметри темпу та тону
         voice = "uk-UA-LadaNeural"
         communicate = edge_tts.Communicate(clean_speech_text, voice, rate="+8%", pitch="+4Hz")
         await communicate.save(temp_audio_path)
@@ -123,4 +123,18 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             os.remove(temp_audio_path)
 
 async def main():
-    await start_web_server() старий код...
+    await start_web_server()
+    
+    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+    
+    await app.initialize()
+    await app.bot.delete_webhook(drop_pending_updates=True)
+    await app.start()
+    await app.updater.start_polling(drop_pending_updates=True)
+    
+    await asyncio.Event().wait()
+
+if __name__ == '__main__':
+    asyncio.run(main())
