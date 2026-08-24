@@ -19,14 +19,12 @@ MONO_BANK_URL = "https://send.monobank.ua/"
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 
-# 🩺 СТАНДАРТНЕ МЕДИЧНЕ ЗАСТЕРЕЖЕННЯ
 MEDICAL_DISCLAIMER = (
     "\n\n⚠️ **Важливо:** Цей бот є розважальним і не дає медичних порад! "
     "Якщо ви помітили зміну форми, кольору чи розміру родимок, висип або біль на шкірі — "
     "обов'язково зверніться до лікаря-дерматолога."
 )
 
-# --- ВЕБ-СЕРВЕР ДЛЯ RENDER (HEALTH CHECK) ---
 async def handle_ping(request):
     return web.Response(text="Molestrology UA is running!")
 
@@ -46,28 +44,39 @@ def clean_text_for_tts(text: str) -> str:
     text = re.sub(r'\s+', ' ', text).strip()
     return text
 
-# --- ДИНАМІЧНІ ПРОМПТИ ---
-def get_prompt(mode: str, gender: str = "не вказано") -> str:
-    gender_context = ""
-    if mode == "love":
-        if gender == "male":
-            gender_context = "Користувач — ЧОЛОВІК. Враховуй це при підборі порад зваблювання, стиля та одягу (пропонуй чоловічий стиль)."
-        elif gender == "female":
-            gender_context = "Користувач — ЖІНКА. Враховуй це при підборі порад зваблювання, стиля та одягу (пропонуй жіночий стиль)."
+def detect_gender_by_name(name: str) -> str:
+    name_lower = name.lower()
+    female_endings = ('а', 'я', 'іна', 'ина', 'ела', 'іза')
+    if name_lower.endswith(female_endings) and not name_lower.endswith(('ілля', 'микита', 'сава', 'ярема')):
+        return "female"
+    return "male"
+
+def get_prompt(mode: str, gender: str, user_name: str) -> str:
+    if gender == "male":
+        gender_instruction = (
+            f"Користувач {user_name} — ЧОЛОВІК. "
+            "ПОВНІСТЮ ІГНОРУЙ ЖІНОЧИЙ ОДЯГ ТА СУКНІ! "
+            "Пиши про пошук панянки/дівчини/леді. Радити одягти чоловічий стиль (сорочка, смокінг, стильний піджак тощо)."
+        )
+    else:
+        gender_instruction = (
+            f"Користувач {user_name} — ЖІНКА. "
+            "Пиши про пошук кавалера/чоловіка. Радити жіночий стиль (сукня, капелюшок тощо)."
+        )
 
     prompts = {
         "love": f"""
             Ти — грайлива, дуже дотепна та кумедна українська астрологиня-сваха з додатка Molestrology. 
-            {gender_context}
+            ВАЖЛИВО: {gender_instruction}
             
             Проаналізуй це фото шкіри:
             1. Знайди всі родимки або цятки [ymin, xmin, ymax, xmax] у діапазоні від 0 до 1000.
             2. Напиши ПЕРСОНАЛЬНИЙ ЛЮБОВНИЙ ГОРОСКОП (3 короткі речення). 
             
             Вимоги: 
-            - Згадай геометричні особливості цього унікального візерунка (кути між точками, формацію).
+            - Згадай геометричні особливості цього візерунка (кути між точками, формацію).
             - Вигадай кумедну назву для сузір'я кохання.
-            - Дай 2 кумедні порадоньки для зваблювання (що одягти і куди піти), адаптовані під стать користувача.
+            - Дай 2 кумедні порадоньки для зваблювання (що одягти і куди піти), СУВОРО враховуючи стать ({gender}).
             - Звертайся до людини на "Ви".
             
             Поверни відповідь СУВОРО у JSON: {{"moles": [[ymin, xmin, ymax, xmax]], "prediction": "Текст..."}}
@@ -76,12 +85,7 @@ def get_prompt(mode: str, gender: str = "не вказано") -> str:
             Ти — дотепний фінансовий астролог з додатка Molestrology. 
             Проаналізуй це фото шкіри/долоні:
             1. Знайди всі родимки або цятки [ymin, xmin, ymax, xmax] від 0 до 1000.
-            2. Напиши ПЕРСОНАЛЬНИЙ ФІНАНСОВИЙ ГОРОСКОП.
-            
-            Вимоги (структура з 3 коротких речень):
-            - 1 речення: Опис геометрії точок (наприклад, "Цей сакральний вектор цяток відкриває квантовий портал грошового потоку...").
-            - 2 речення: Весела порада про інвестиції чи кар'єру (у що інвестувати або яке рішення принесе прибуток).
-            - 3 речення (В САМОМУ КІНЦІ): Легкий філософський підсумок про щедрість без нав'язування.
+            2. Напиши ПЕРСОНАЛЬНИЙ ФІНАНСОВИЙ ГОРОСКОП (3 речення).
             
             Поверни відповідь СУВОРО у JSON: {"moles": [[ymin, xmin, ymax, xmax]], "prediction": "Текст..."}
         """,
@@ -89,9 +93,8 @@ def get_prompt(mode: str, gender: str = "не вказано") -> str:
             Ти — космічний КІТ-АСТРОЛОГ з додатка Molestrology. 
             Проаналізуй це фото тваринки:
             1. Знайди всі цятки або родимки [ymin, xmin, ymax, xmax] від 0 до 1000.
-            2. Напиши ПЕРСОНАЛЬНИЙ ГОРОСКОП ДЛЯ ТВАРИНКИ (3 короткі речення).
+            2. Напиши ПЕРСОНАЛЬНИЙ ГОРОСКОП ДЛЯ ТВАРИНКИ (3 речення).
             
-            Вимоги: розтлумач формацію точок на лапці/носі та вимоги зірок до господарів.
             Поверни відповідь СУВОРО у JSON: {"moles": [[ymin, xmin, ymax, xmax]], "prediction": "Текст..."}
         """
     }
@@ -107,8 +110,8 @@ def get_mode_keyboard():
 
 def get_gender_keyboard():
     keyboard = [
-        [InlineKeyboardButton("👨 Чоловіча", callback_data="gender_male")],
-        [InlineKeyboardButton("👩 Жіноча", callback_data="gender_female")]
+        [InlineKeyboardButton("👨 Чоловік", callback_data="gender_male")],
+        [InlineKeyboardButton("👩 Жінка", callback_data="gender_female")]
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -118,7 +121,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         f"✨ **Вітаю, {user_name}! Ласкаво просимо до Molestrology UA!** ✨\n\n"
-        "Оберіть режим гороскопу та надішліть мені фото (шкіри з родимками, долоні або улюбленця):"
+        "Оберіть режим гороскопу та надішліть мені фото:"
         f"{MEDICAL_DISCLAIMER}",
         reply_markup=get_mode_keyboard(),
         parse_mode="Markdown"
@@ -169,9 +172,13 @@ async def set_gender(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mode = context.user_data.get("mode", "love")
-    gender = context.user_data.get("gender", "не вказано")
     user_name = update.effective_user.first_name or "Шукач Долі"
     
+    gender = context.user_data.get("gender")
+    if not gender:
+        gender = detect_gender_by_name(user_name)
+        context.user_data["gender"] = gender
+
     msg = await update.message.reply_text("🔮 Зчитую сакральну геометрію точок (10-15 сек)...")
     
     try:
@@ -181,7 +188,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         image = Image.open(io.BytesIO(photo_bytes)).convert("RGB")
         width, height = image.size
 
-        prompt = get_prompt(mode, gender)
+        prompt = get_prompt(mode, gender, user_name)
 
         response = client.models.generate_content(
             model='gemini-3.6-flash',
@@ -224,8 +231,15 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
+        # 💡 НАТЯК НА СУМІСНІСТЬ
+        if gender == "male":
+            compatibility_hint = "🤫 *Псс... Якщо сфотографуєш родимки своєї обраниці (дівчини), я згенерую гороскоп вашої сумісності!*"
+        else:
+            compatibility_hint = "🤫 *Псс... Якщо сфотографуєш родимки свого кавалера (хлопця), я згенерую гороскоп вашої сумісності!*"
+
         caption_text = (
             f"✨ **Персональний астропрогноз для {user_name}:**\n\n{prediction_text}\n\n"
+            f"{compatibility_hint}\n\n"
             f"💬 *Можете поставити запитання астрологу у чаті!*"
             f"{MEDICAL_DISCLAIMER}"
         )
@@ -264,11 +278,10 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             pass
 
-# --- ОБРОБНИК ТЕКСТОВИХ ПИТАНЬ З ПЕРЕВІРКОЮ НА МЕДИЧНІ СИМПТОМИ ---
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
     user_name = update.effective_user.first_name or "Шукач Долі"
-    gender = context.user_data.get("gender", "не вказано")
+    gender = context.user_data.get("gender") or detect_gender_by_name(user_name)
     last_prediction = context.user_data.get("last_prediction", "Фото ще не надсилалося.")
     moles_count = context.user_data.get("moles_count", 0)
 
@@ -285,12 +298,13 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         Користувач запитує: "{user_text}"
 
-        КРИТИЧНО ВАЖЛИВА ІНСТРУКЦІЯ:
+        ІНСТРУКЦІЇ:
         1. Якщо питання стосується МЕДИЦИНИ, ВИСИПУ, ЗМІНИ РОДИМОК, БОЛЮ, СВЕРБЕЖУ, КРОВОТЕЧІ чи ПІДОЗРІЛИХ ПЛЯМ:
-           - Обов'язково чітко наголоси, що ти астролог, а не лікар!
-           - Настійно порадь звернутися до дерматолога або сімейного лікаря. Не ставай діагнози і не давайте медичних порад!
-        2. Якщо питання звичайне або астрологічне:
-           - Дай дотепну відповідь із гумором, посилаючись на родимки або астропрогноз (2-3 речення).
+           - Обов'язково наголоси, що ти астролог, а не лікар!
+           - Настійно порадь звернутися до дерматолога. Не став діагнози!
+        2. Якщо це звичайне запитання:
+           - Відповідай з урахуванням статі користувача ({gender}). Для чоловіків — підбирай поради стосовно жінок, для жінок — стосовно чоловіків.
+           - Дай дотепну відповідь (2-3 речення).
     """
 
     try:
