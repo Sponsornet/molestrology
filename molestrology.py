@@ -101,9 +101,10 @@ def get_prompt(mode: str, gender: str, user_name: str) -> str:
 
 def get_mode_keyboard():
     keyboard = [
-        [InlineKeyboardButton("💘 Любовний гороскоп", callback_data="mode_love")],
-        [InlineKeyboardButton("💰 Фінансовий (Багатство)", callback_data="mode_money")],
-        [InlineKeyboardButton("🐾 Папстрологія (Для улюбленців)", callback_data="mode_pet")]
+        [InlineKeyboardButton("💘 Любовний гороскоп (по фото)", callback_data="mode_love")],
+        [InlineKeyboardButton("💰 Фінансовий (по фото)", callback_data="mode_money")],
+        [InlineKeyboardButton("🐾 Папстрологія (для тварин)", callback_data="mode_pet")],
+        [InlineKeyboardButton("🌟 Загальний астропрогноз (без фото)", callback_data="mode_general")]
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -120,7 +121,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         f"✨ **Вітаю, {user_name}! Ласкаво просимо до Molestrology UA!** ✨\n\n"
-        "Оберіть режим гороскопу та надішліть мені фото:"
+        "Оберіть режим гороскопу або отримайте загальний прогноз на сьогодні:"
         f"{MEDICAL_DISCLAIMER}",
         reply_markup=get_mode_keyboard(),
         parse_mode="Markdown"
@@ -132,7 +133,16 @@ async def set_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if query.data == "mode_love":
         context.user_data["mode"] = "love"
-        text = "💘 Обрано **Любовний режим**!\nБудь ласка, вкажіть вашу стать для точного гороскопу:"
+        text = "💘 Обрано **Любовний режим**!\nВкажіть вашу стать та надішліть фото шкіри:"
+        try:
+            await query.edit_message_text(text=text, reply_markup=get_gender_keyboard(), parse_mode="Markdown")
+        except:
+            await query.message.reply_text(text=text, reply_markup=get_gender_keyboard(), parse_mode="Markdown")
+        return
+
+    elif query.data == "mode_general":
+        context.user_data["mode"] = "general"
+        text = "🌟 Обрано **Загальний астропрогноз**!\nБудь ласка, вкажіть вашу стать:"
         try:
             await query.edit_message_text(text=text, reply_markup=get_gender_keyboard(), parse_mode="Markdown")
         except:
@@ -151,23 +161,79 @@ async def set_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except:
         await query.message.reply_text(text=text, parse_mode="Markdown")
 
+async def generate_daily_horoscope(update: Update, context: ContextTypes.DEFAULT_TYPE, user_name: str, gender: str):
+    msg = await update.callback_query.message.reply_text("🔮 Звіряю розташування планет на сьогодні...")
+
+    target_gender = "чоловіка" if gender == "male" else "жінки"
+    prompt = f"""
+        Ти — грайлива, дотепна та кумедна українська астрологиня з додатка Molestrology.
+        Склади загальний астропрогноз на сьогодні для {user_name} (стать: {target_gender}).
+        
+        Вимоги:
+        - Почни з оригінального привітання.
+        - Розкажи про "вплив Ретроградного Меркурія" або іншої планети в іронічному ключі.
+        - Дай 3 кумедні поради на день (що варто зробити, чого уникати та який ваш залізобетонний талісман дня).
+        - Довжина: 3-4 речення.
+    """
+
+    try:
+        response = client.models.generate_content(
+            model='gemini-3.6-flash',
+            contents=prompt
+        )
+        prediction_text = response.text
+
+        keyboard = [
+            [InlineKeyboardButton("☕ Пригостити астролога (Monobank)", url=MONO_BANK_URL)],
+            [InlineKeyboardButton("🔄 Змінити режим гороскопу", callback_data="show_menu")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        await msg.edit_text(
+            f"🌟 **Загальний астропрогноз на сьогодні для {user_name}:**\n\n{prediction_text}",
+            reply_markup=reply_markup,
+            parse_mode="Markdown"
+        )
+
+        clean_speech = clean_text_for_tts(prediction_text)
+        if clean_speech:
+            try:
+                communicate = edge_tts.Communicate(clean_speech, "uk-UA-PolinaNeural")
+                audio_stream = io.BytesIO()
+                async for chunk in communicate.stream():
+                    if chunk["type"] == "audio":
+                        audio_stream.write(chunk["data"])
+                audio_stream.seek(0)
+                if audio_stream.getbuffer().nbytes > 0:
+                    audio_stream.name = "voice.ogg"
+                    await update.callback_query.message.reply_voice(voice=audio_stream)
+            except Exception as tts_err:
+                print(f"Помилка TTS: {tts_err}")
+
+    except Exception as e:
+        print(f"Помилка генерації загального прогнозу: {e}")
+        await msg.edit_text("❌ Зірки сьогодні трохи затуманилися. Спробуйте ще раз пізніше!")
+
 async def set_gender(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    if query.data == "gender_male":
-        context.user_data["gender"] = "male"
-        gender_text = "чоловічу"
-    else:
-        context.user_data["gender"] = "female"
-        gender_text = "жіночу"
+    gender = "male" if query.data == "gender_male" else "female"
+    context.user_data["gender"] = gender
+    gender_text = "чоловічу" if gender == "male" else "жіночу"
 
-    text = f"✅ Обрано **{gender_text} стать**. Тепер надішліть фото шкіри з родимками!"
-    
-    try:
-        await query.edit_message_text(text=text, parse_mode="Markdown")
-    except:
-        await query.message.reply_text(text=text, parse_mode="Markdown")
+    mode = context.user_data.get("mode", "love")
+    user_name = update.effective_user.first_name or "Шукач Долі"
+
+    if mode == "general":
+        await query.edit_message_text(f"✅ Обрано **{gender_text} стать**.")
+        await generate_daily_horoscope(update, context, user_name, gender)
+    else:
+        text = f"✅ Обрано **{gender_text} стать**. Тепер надішліть фото шкіри з родимками!"
+        try:
+            await query.edit_message_text(text=text, parse_mode="Markdown")
+        except:
+            await query.message.reply_text(text=text, parse_mode="Markdown")
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mode = context.user_data.get("mode", "love")
@@ -319,7 +385,7 @@ async def show_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     query = update.callback_query
     await query.answer()
     await query.message.reply_text(
-        "Оберіть бажаний режим для наступного фото:",
+        "Оберіть бажаний режим для наступного гороскопу:",
         reply_markup=get_mode_keyboard()
     )
 
@@ -327,7 +393,6 @@ def main():
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     
-    # Запускаємо веб-сервер у фоновому режимі
     loop.create_task(start_web_server())
 
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
