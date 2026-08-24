@@ -15,7 +15,6 @@ from aiohttp import web
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-# 🔗 Посилання на вашу Банку Monobank
 MONO_BANK_URL = "https://send.monobank.ua/"
 
 client = genai.Client(api_key=GEMINI_API_KEY)
@@ -40,51 +39,69 @@ def clean_text_for_tts(text: str) -> str:
     text = re.sub(r'\s+', ' ', text).strip()
     return text
 
-# --- ПЕРСОНАЛІЗОВАНІ ПРОМПТИ ---
-PROMPTS = {
-    "love": """
-        Ти — грайлива, дуже дотепна та кумедна українська астрологиня-сваха з додатка Molestrology. 
-        Проаналізуй це фото шкіри:
-        1. Знайди всі родимки або цятки [ymin, xmin, ymax, xmax] у діапазоні від 0 до 1000.
-        2. Напиши ПЕРСОНАЛЬНИЙ ЛЮБОВНИЙ ГОРОСКОП (3 короткі речення). 
-        
-        Вимоги: 
-        - Згадай геометричні особливості цього унікального візерунка (кути між точками, формацію).
-        - Вигадай кумедну назву для сузір'я кохання.
-        - Дай 2 кумедні порадоньки для зваблювання (що одягти і куди піти).
-        - Звертайся до людини на "Ви".
-        
-        Поверни відповідь СУВОРО у JSON: {"moles": [[ymin, xmin, ymax, xmax]], "prediction": "Текст..."}
-    """,
-    "money": """
-        Ти — дотепний фінансовий астролог з додатка Molestrology. 
-        Проаналізуй це фото шкіри/долоні:
-        1. Знайди всі родимки або цятки [ymin, xmin, ymax, xmax] від 0 до 1000.
-        2. Напиши ПЕРСОНАЛЬНИЙ ФІНАНСОВИЙ ГОРОСКОП.
-        
-        Вимоги (структура з 3 коротких речень):
-        - 1 речення: Опис геометрії точок (наприклад, "Цей сакральний вектор цяток відкриває квантовий портал грошового потоку...").
-        - 2 речення: Весела порада про інвестиції чи кар'єру (у що інвестувати або яке рішення принесе прибуток).
-        - 3 речення (В САМОМУ КІНЦІ): Легкий філософський підсумок про щедрість без нав'язування (наприклад, "Пам'ятайте: справжнє багатство любить круговорот, і легка щедрість або добрий вчинок завжди повертаються Всесвітом у подвійному розмірі.").
-        
-        Поверни відповідь СУВОРО у JSON: {"moles": [[ymin, xmin, ymax, xmax]], "prediction": "Текст..."}
-    """,
-    "pet": """
-        Ти — космічний КІТ-АСТРОЛОГ з додатка Molestrology. 
-        Проаналізуй це фото тваринки:
-        1. Знайди всі цятки або родимки [ymin, xmin, ymax, xmax] від 0 до 1000.
-        2. Напиши ПЕРСОНАЛЬНИЙ ГОРОСКОП ДЛЯ ТВАРИНКИ (3 короткі речення).
-        
-        Вимоги: розтлумач формацію точок на лапці/носі та вимоги зірок до господарів (+3 смаколики, щедрість на ласку).
-        Поверни відповідь СУВОРО у JSON: {"moles": [[ymin, xmin, ymax, xmax]], "prediction": "Текст..."}
-    """
-}
+# --- ДИНАМІЧНІ ПРОМПТИ ---
+def get_prompt(mode: str, gender: str = "не вказано") -> str:
+    gender_context = ""
+    if mode == "love":
+        if gender == "male":
+            gender_context = "Користувач — ЧОЛОВІК. Враховуй це при підборі порад зваблювання, стиля та одягу (пропонуй чоловічий стиль)."
+        elif gender == "female":
+            gender_context = "Користувач — ЖІНКА. Враховуй це при підборі порад зваблювання, стиля та одягу (пропонуй жіночий стиль)."
+
+    prompts = {
+        "love": f"""
+            Ти — грайлива, дуже дотепна та кумедна українська астрологиня-сваха з додатка Molestrology. 
+            {gender_context}
+            
+            Проаналізуй це фото шкіри:
+            1. Знайди всі родимки або цятки [ymin, xmin, ymax, xmax] у діапазоні від 0 до 1000.
+            2. Напиши ПЕРСОНАЛЬНИЙ ЛЮБОВНИЙ ГОРОСКОП (3 короткі речення). 
+            
+            Вимоги: 
+            - Згадай геометричні особливості цього унікального візерунка (кути між точками, формацію).
+            - Вигадай кумедну назву для сузір'я кохання.
+            - Дай 2 кумедні порадоньки для зваблювання (що одягти і куди піти), адаптовані під стать користувача.
+            - Звертайся до людини на "Ви".
+            
+            Поверни відповідь СУВОРО у JSON: {{"moles": [[ymin, xmin, ymax, xmax]], "prediction": "Текст..."}}
+        """,
+        "money": """
+            Ти — дотепний фінансовий астролог з додатка Molestrology. 
+            Проаналізуй це фото шкіри/долоні:
+            1. Знайди всі родимки або цятки [ymin, xmin, ymax, xmax] від 0 до 1000.
+            2. Напиши ПЕРСОНАЛЬНИЙ ФІНАНСОВИЙ ГОРОСКОП.
+            
+            Вимоги (структура з 3 коротких речень):
+            - 1 речення: Опис геометрії точок (наприклад, "Цей сакральний вектор цяток відкриває квантовий портал грошового потоку...").
+            - 2 речення: Весела порада про інвестиції чи кар'єру (у що інвестувати або яке рішення принесе прибуток).
+            - 3 речення (В САМОМУ КІНЦІ): Легкий філософський підсумок про щедрість без нав'язування.
+            
+            Поверни відповідь СУВОРО у JSON: {"moles": [[ymin, xmin, ymax, xmax]], "prediction": "Текст..."}
+        """,
+        "pet": """
+            Ти — космічний КІТ-АСТРОЛОГ з додатка Molestrology. 
+            Проаналізуй це фото тваринки:
+            1. Знайди всі цятки або родимки [ymin, xmin, ymax, xmax] від 0 до 1000.
+            2. Напиши ПЕРСОНАЛЬНИЙ ГОРОСКОП ДЛЯ ТВАРИНКИ (3 короткі речення).
+            
+            Вимоги: розтлумач формацію точок на лапці/носі та вимоги зірок до господарів.
+            Поверни відповідь СУВОРО у JSON: {"moles": [[ymin, xmin, ymax, xmax]], "prediction": "Текст..."}
+        """
+    }
+    return prompts.get(mode, prompts["love"])
 
 def get_mode_keyboard():
     keyboard = [
         [InlineKeyboardButton("💘 Любовний гороскоп", callback_data="mode_love")],
         [InlineKeyboardButton("💰 Фінансовий (Багатство)", callback_data="mode_money")],
         [InlineKeyboardButton("🐾 Папстрологія (Для улюбленців)", callback_data="mode_pet")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_gender_keyboard():
+    keyboard = [
+        [InlineKeyboardButton("👨 Чоловіча", callback_data="gender_male")],
+        [InlineKeyboardButton("👩 Жіноча", callback_data="gender_female")]
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -105,7 +122,13 @@ async def set_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if query.data == "mode_love":
         context.user_data["mode"] = "love"
-        text = "💘 Обрано **Любовний режим**! Надішліть фото шкіри з родимками."
+        text = "💘 Обрано **Любовний режим**!\nБудь ласка, вкажіть вашу стать для точного гороскопу:"
+        try:
+            await query.edit_message_text(text=text, reply_markup=get_gender_keyboard(), parse_mode="Markdown")
+        except:
+            await query.message.reply_text(text=text, reply_markup=get_gender_keyboard(), parse_mode="Markdown")
+        return
+
     elif query.data == "mode_money":
         context.user_data["mode"] = "money"
         text = "💰 Обрано **Фінансовий режим**! Надішліть фото долоні або шкіри."
@@ -113,7 +136,24 @@ async def set_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["mode"] = "pet"
         text = "🐾 Обрано **Папстрологію**! Надішліть фото носа, лапки чи шерсті улюбленця."
 
-    # Змінюємо повідомлення з кнопками або надсилаємо нове підтвердження
+    try:
+        await query.edit_message_text(text=text, parse_mode="Markdown")
+    except:
+        await query.message.reply_text(text=text, parse_mode="Markdown")
+
+async def set_gender(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "gender_male":
+        context.user_data["gender"] = "male"
+        gender_text = "чоловічу"
+    else:
+        context.user_data["gender"] = "female"
+        gender_text = "жіночу"
+
+    text = f"✅ Обрано **{gender_text} стать**. Тепер надішліть фото шкіри з родимками!"
+    
     try:
         await query.edit_message_text(text=text, parse_mode="Markdown")
     except:
@@ -121,6 +161,7 @@ async def set_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mode = context.user_data.get("mode", "love")
+    gender = context.user_data.get("gender", "не вказано")
     user_name = update.effective_user.first_name or "Шукач Долі"
     
     msg = await update.message.reply_text("🔮 Зчитую сакральну геометрію точок (10-15 сек)...")
@@ -132,7 +173,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         image = Image.open(io.BytesIO(photo_bytes)).convert("RGB")
         width, height = image.size
 
-        prompt = PROMPTS.get(mode, PROMPTS["love"])
+        prompt = get_prompt(mode, gender)
 
         response = client.models.generate_content(
             model='gemini-3.6-flash',
@@ -147,7 +188,10 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         moles = data.get("moles", [])
         prediction_text = data.get("prediction", "Зірки бачать шалений магнетизм!")
 
-        # Малювання
+        # 🧠 ЗБЕРІГАЄМО ПРОГНОЗ ТА КІЛЬКІСТЬ РОДИМОК У КОНТЕКСТ КОРИСТУВАЧА
+        context.user_data["last_prediction"] = prediction_text
+        context.user_data["moles_count"] = len(moles)
+
         draw = ImageDraw.Draw(image)
         centers = []
 
@@ -167,14 +211,16 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         image.save(img_buffer, format="JPEG")
         img_buffer.seek(0)
 
-        # 🔘 Кнопки під результатом: Донат + Швидка зміна режиму
         keyboard = [
             [InlineKeyboardButton("☕ Пригостити астролога (Monobank)", url=MONO_BANK_URL)],
             [InlineKeyboardButton("🔄 Змінити режим гороскопу", callback_data="show_menu")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
-        caption_text = f"✨ **Персональний астропрогноз для {user_name}:**\n\n{prediction_text}"
+        caption_text = (
+            f"✨ **Персональний астропрогноз для {user_name}:**\n\n{prediction_text}\n\n"
+            f"💬 *Можете поставити мені будь-яке запитання щодо ваших родимок або поради у чаті!*"
+        )
 
         await update.message.reply_photo(
             photo=img_buffer, 
@@ -183,7 +229,6 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
         
-        # Озвучка жіночим голосом (Polina)
         clean_speech = clean_text_for_tts(prediction_text)
         if clean_speech:
             try:
@@ -211,6 +256,43 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             pass
 
+# --- ОБРОБНИК ТЕКСТОВИХ ПИТАНЬ З ПРИВ'ЯЗКОЮ ДО РОДИМОК ---
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_text = update.message.text
+    user_name = update.effective_user.first_name or "Шукач Долі"
+    gender = context.user_data.get("gender", "не вказано")
+    last_prediction = context.user_data.get("last_prediction", "Фото ще не надсилалося.")
+    moles_count = context.user_data.get("moles_count", 0)
+
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+
+    prompt = f"""
+        Ти — грайлива, дотепна, але мудра та підтримлива українська астрологиня з додатка Molestrology.
+        
+        Контекст користувача:
+        - Ім'я: {user_name}
+        - Стать: {gender}
+        - Кількість виявлених родимок/точок на останньому фото: {moles_count}
+        - Останній згенерований аналіз родимок/гороскоп: "{last_prediction}"
+
+        Користувач запитує: "{user_text}"
+
+        Твоє завдання:
+        - Дай відповідь або пораду, ОБОРОЗ'ЯЗКОВО посилаючись на родимки користувача, їх формацію або попередній опис сузір'я з аналізу.
+        - Відповідай дотепно, із гумором та астрологічним шармом.
+        - Тримай відповідь у межах 2-4 речень.
+    """
+
+    try:
+        response = client.models.generate_content(
+            model='gemini-3.6-flash',
+            contents=prompt
+        )
+        await update.message.reply_text(response.text, parse_mode="Markdown")
+    except Exception as e:
+        print(f"Помилка текстового обробника: {e}")
+        await update.message.reply_text("Зірки трохи збилися з ритму. Спробуйте поставити питання ще раз! ✨")
+
 async def show_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -225,8 +307,12 @@ async def main():
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(set_mode, pattern="^mode_"))
+    app.add_handler(CallbackQueryHandler(set_gender, pattern="^gender_"))
     app.add_handler(CallbackQueryHandler(show_menu_callback, pattern="^show_menu$"))
+    
+    # Обробка фото та текстів
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     
     await app.initialize()
     await app.start()
