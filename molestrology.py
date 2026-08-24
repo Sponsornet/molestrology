@@ -15,12 +15,12 @@ from aiohttp import web
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-# 🔗 Посилання на вашу Банку Monobank
-MONO_BANK_URL = "https://send.monobank.ua/"  # <--- Вставте сюди ваше посилання на банку!
+# 🔗 Вставте сюди ваше посилання на банку Monobank!
+MONO_BANK_URL = "https://send.monobank.ua/"
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 
-# --- ВЕБ-СЕРВЕР ДЛЯ РЕНДЕР (HEALTH CHECK) ---
+# --- ВЕБ-СЕРВЕР ДЛЯ RENDER (HEALTH CHECK) ---
 async def handle_ping(request):
     return web.Response(text="Molestrology UA is running!")
 
@@ -35,53 +35,70 @@ async def start_web_server():
     await site.start()
 
 def clean_text_for_tts(text: str) -> str:
+    """Очищення тексту від спецсимволів для стійкості TTS"""
     text = text.replace('*', '').replace('«', '').replace('»', '').replace('"', '')
     text = re.sub(r'[^\w\s,.!?-А-Яа-яЄєІіЇїҐґ]', ' ', text)
     text = re.sub(r'\s+', ' ', text).strip()
     return text
 
-# --- ПРОМПТИ ПІД РІЗНІ РЕЖИМИ ---
+# --- ПЕРСОНАЛІЗОВАНІ ПРОМПТИ ПІД РІЗНІ РЕЖИМИ ---
 PROMPTS = {
     "love": """
-        Ти — грайлива, дерзка, дуже дотепна та кумедна українська астрологиня-сваха з додатка Molestrology. 
+        Ти — грайлива, дуже дотепна та кумедна українська астрологиня-сваха з додатка Molestrology. 
         Проаналізуй це фото шкіри:
-        1. Знайди всі родимки або цятки. Поверни їх координати [ymin, xmin, ymax, xmax] у діапазоні від 0 до 1000.
-        2. Напиши УНІКАЛЬНИЙ, ВЕСЕЛИЙ і грайливий ЛЮБОВНИЙ гороскоп (3 короткі речення). 
-        Вимоги: вигадай свіжу кумедну назву для сузір'я кохання та дай 2 порадоньки для зваблювання (що одягти і куди піти).
+        1. Знайди всі родимки або цятки [ymin, xmin, ymax, xmax] у діапазоні від 0 до 1000.
+        2. Напиши ГЛИБОКО ПЕРСОНАЛЬНИЙ ЛЮБОВНИЙ ГОРОСКОП (3 короткі речення). 
+        
+        Вимоги: 
+        - Обов'язково згадай ПЕРСОНАЛЬНІ геометричні особливості цього візерунка (наприклад: "Кут між першими родимками вказує на...", "Ця унікальна трикутна формація точок на вашій шкірі означає...").
+        - Вигадай свіжу унікальну назву для сузір'я кохання.
+        - Дай 2 кумедні порадоньки для зваблювання (що оригінального одягти і куди конкретно піти).
+        - Звертайся до людини на "Ви".
+        
         Поверни відповідь СУВОРО у JSON: {"moles": [[ymin, xmin, ymax, xmax]], "prediction": "Текст..."}
     """,
     "money": """
-        Ти — ексцентричний, жадібний до гумору та дуже іронічний крипто-астролог з додатка Molestrology. 
+        Ти — ексцентричний, дотепний та глибокий фінансовий астролог з додатка Molestrology. 
         Проаналізуй це фото шкіри/долоні:
-        1. Знайди всі родимки або цятки [ymin, xmin, ymax, xmax] від 0 до 1000.
-        2. Напиши ФІНАНСОВИЙ та КАР'ЄРНИЙ гороскоп (3 короткі речення).
-        Вимоги: вигадай кумедну назву для багатського сузір'я (наприклад, "Сузір'я Офшорного Вареника" чи "Графік Біткоїна на спині"), дай пораду, в що інвестувати та яке безглузде рішення принесе прибуток.
+        1. Знайди всі родимки або цятки [ymin, xmin, ymax, xmax] у діапазоні від 0 до 1000.
+        2. Напиши ПЕРСОНАЛЬНИЙ ФІНАНСОВИЙ ГОРОСКОП БАГАТСТВА ТА ЩЕДРОСТІ (3 короткі речення).
+        
+        Вимоги:
+        - Підкресли УНІКАЛЬНІСТЬ саме цієї геометрії точок (наприклад: "Вектор між цими цятками утворює сакральний канал достатку...").
+        - Справжнє багатство — це не лише прибуток, а й КРУГОВОРОТ ГРОШЕЙ ТА ЩЕДРІСТЬ! Поясни, що чим більше людина ділиться (донатить, підтримує інших, робить подарунки), тим більше Всесвіт повертає їй у формі несподіваного грошового потоку.
+        - Дай 1 кумедну пораду щодо інвестицій і 1 пораду про щедрий вчинок, який активує багатство.
+        
         Поверни відповідь СУВОРО у JSON: {"moles": [[ymin, xmin, ymax, xmax]], "prediction": "Текст..."}
     """,
     "pet": """
         Ти — космічний КІТ-АСТРОЛОГ з додатка Molestrology. 
         Проаналізуй це фото шерсті, лапки або носа тваринки:
         1. Знайди всі цятки або родимки [ymin, xmin, ymax, xmax] від 0 до 1000.
-        2. Напиши ГОРОСКОП ДЛЯ ТВАРИНКИ (3 короткі речення) від імені космічного кота.
-        Вимоги: розтлумач, чого вимагають зірки від господарів (наприклад, +3 паштети, нічний тигидик), вигадай сузір'я (наприклад, "Сузір'я Золотої Сосиски").
+        2. Напиши ПЕРСОНАЛЬНИЙ ГОРОСКОП ДЛЯ ЦІЄЇ ТВАРИНКИ (3 короткі речення).
+        
+        Вимоги:
+        - Розтлумач унікальну формацію точок на лапці/носі.
+        - Передай сакральні вимоги зірок до господарів (+3 смаколики, щедрість на ласку та обійми).
+        
         Поверни відповідь СУВОРО у JSON: {"moles": [[ymin, xmin, ymax, xmax]], "prediction": "Текст..."}
     """
 }
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Встановлюємо режим за замовчуванням
     context.user_data["mode"] = "love"
     
     keyboard = [
         [InlineKeyboardButton("💘 Любовний гороскоп", callback_data="mode_love")],
-        [InlineKeyboardButton("💰 Фінансовий (Багатство)", callback_data="mode_money")],
-        [InlineKeyboardButton("🐾 Папстрологія (Для тварин)", callback_data="mode_pet")]
+        [InlineKeyboardButton("💰 Фінансовий (Багатство та Щедрість)", callback_data="mode_money")],
+        [InlineKeyboardButton("🐾 Папстрологія (Для улюбленців)", callback_data="mode_pet")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
+    user_name = update.effective_user.first_name or "Шукач Долі"
+
     await update.message.reply_text(
-        "✨ **Вітаю у Molestrology UA!** ✨\n\n"
-        "Обери режим гороскопу та надішли мені фото (шкіри з родимками або лапки/носа тваринки):",
+        f"✨ **Вітаю, {user_name}! Ласкаво просимо до Molestrology UA!** ✨\n\n"
+        "Оберіть режим персонального гороскопу та надішліть мені фото (шкіри з родимками, долоні або лапки/носа тваринки):",
         reply_markup=reply_markup,
         parse_mode="Markdown"
     )
@@ -92,19 +109,21 @@ async def set_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if query.data == "mode_love":
         context.user_data["mode"] = "love"
-        text = "💘 Обрано **Любовний режим**! Надішли фото шкіри з родимками."
+        text = "💘 Обрано **Любовний режим**! Надішліть фото шкіри з родимками."
     elif query.data == "mode_money":
         context.user_data["mode"] = "money"
-        text = "💰 Обрано **Фінансовий режим**! Надішли фото долоні або шкіри."
+        text = "💰 Обрано **Фінансовий режим (Багатство та Щедрість)**! Надішліть фото долоні або шкіри."
     elif query.data == "mode_pet":
         context.user_data["mode"] = "pet"
-        text = "🐾 Обрано **Папстрологію**! Надішли фото носа, лапки чи шерсті тваринки."
+        text = "🐾 Обрано **Папстрологію**! Надішліть фото носа, лапки чи шерсті улюбленця."
 
     await query.edit_message_text(text=text, parse_mode="Markdown")
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mode = context.user_data.get("mode", "love")
-    msg = await update.message.reply_text("🔮 Зчитую космічні флюїди (10-15 сек)...")
+    user_name = update.effective_user.first_name or "Шукач Долі"
+    
+    msg = await update.message.reply_text("🔮 Сканую сакральну геометрію точок (10-15 сек)...")
     
     try:
         photo_file = await update.message.photo[-1].get_file()
@@ -128,7 +147,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         moles = data.get("moles", [])
         prediction_text = data.get("prediction", "Зірки бачать шалений магнетизм!")
 
-        # Малювання
+        # Малювання сузір'я
         draw = ImageDraw.Draw(image)
         centers = []
 
@@ -148,16 +167,18 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         image.save(img_buffer, format="JPEG")
         img_buffer.seek(0)
 
-        # Кнопка Донату на Банку Monobank
+        # Кнопка донату
         keyboard = [
             [InlineKeyboardButton("☕ Пригостити астролога кавою (Monobank)", url=MONO_BANK_URL)]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
-        # Відправка фото з текстом
+        # Відправка фото з персоналізованим текстом
+        caption_text = f"✨ **Персональний астропрогноз для {user_name}:**\n\n{prediction_text}"
+
         await update.message.reply_photo(
             photo=img_buffer, 
-            caption=f"✨ **Твоє космічне пророцтво:**\n\n{prediction_text}",
+            caption=caption_text,
             reply_markup=reply_markup,
             parse_mode="Markdown"
         )
