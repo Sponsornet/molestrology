@@ -47,7 +47,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = await update.message.reply_text("✨ Зчитую любовні флюїди та родимки (зачекайте 10-15 сек)...")
-    temp_audio_path = f"voice_{update.message.message_id}.mp3"
     
     try:
         photo_file = await update.message.photo[-1].get_file()
@@ -77,7 +76,6 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         }
         """
 
-        # Піднімаємо температуру для різноманіття тексту
         response = client.models.generate_content(
             model='gemini-3.6-flash',
             contents=[image, prompt],
@@ -114,19 +112,27 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # 1. Відправка фото з текстом
         await update.message.reply_photo(photo=img_buffer, caption=f"💘 **Любовний астропрогноз:**\n\n{prediction_text}")
         
-        # 2. Озвучка жіночим голосом через файл з обробкою помилок
+        # 2. Озвучка жіночим голосом (Polina)
         clean_speech = clean_text_for_tts(prediction_text)
         if clean_speech:
             try:
-                female_voice = "uk-UA-LadaNeural"
-                tts = edge_tts.Communicate(text=clean_speech, voice=female_voice)
-                await tts.save(temp_audio_path)
+                female_voice = "uk-UA-PolinaNeural"
+                communicate = edge_tts.Communicate(clean_speech, female_voice)
+                
+                audio_stream = io.BytesIO()
+                async for chunk in communicate.stream():
+                    if chunk["type"] == "audio":
+                        audio_stream.write(chunk["data"])
 
-                if os.path.exists(temp_audio_path) and os.path.getsize(temp_audio_path) > 0:
-                    with open(temp_audio_path, "rb") as voice_file:
-                        await update.message.reply_voice(voice=voice_file)
+                audio_stream.seek(0)
+                if audio_stream.getbuffer().nbytes > 0:
+                    audio_stream.name = "voice.ogg"
+                    await update.message.reply_voice(voice=audio_stream)
+                else:
+                    await update.message.reply_text("⚠️ Аудіопотік виявився порожнім.")
             except Exception as tts_err:
                 print(f"Помилка озвучки TTS: {tts_err}")
+                await update.message.reply_text(f"⚠️ Помилка TTS: {tts_err}")
 
         await msg.delete()
 
@@ -136,13 +142,6 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await msg.edit_text(f"❌ Сталася помилка під час обробки: {e}")
         except:
             pass
-
-    finally:
-        if os.path.exists(temp_audio_path):
-            try:
-                os.remove(temp_audio_path)
-            except Exception:
-                pass
 
 async def main():
     await start_web_server()
