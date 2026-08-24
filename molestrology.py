@@ -9,7 +9,6 @@ from google import genai
 from google.genai import types
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
-from telegram.error import Conflict
 from aiohttp import web
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
@@ -231,7 +230,6 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
-        # 💡 НАТЯК НА СУМІСНІСТЬ
         if gender == "male":
             compatibility_hint = "🤫 *Псс... Якщо сфотографуєш родимки своєї обраниці (дівчини), я згенерую гороскоп вашої сумісності!*"
         else:
@@ -325,9 +323,13 @@ async def show_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         reply_markup=get_mode_keyboard()
     )
 
-async def main():
-    await start_web_server()
+def main():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     
+    # Запускаємо веб-сервер у фоновому режимі
+    loop.create_task(start_web_server())
+
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(set_mode, pattern="^mode_"))
@@ -336,24 +338,9 @@ async def main():
     
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-    
-    await app.initialize()
-    await app.start()
 
-    while True:
-        try:
-            await app.bot.delete_webhook(drop_pending_updates=True)
-            await app.updater.start_polling(drop_pending_updates=True)
-            print("UA Бот успішно запущено!")
-            break
-        except Conflict:
-            print("Виявлено старий процес Render. Чекаємо 15 секунд...")
-            await asyncio.sleep(15)
-        except Exception as e:
-            print(f"Помилка запуску: {e}")
-            await asyncio.sleep(5)
-
-    await asyncio.Event().wait()
+    print("UA Бот успішно запущено!")
+    app.run_polling(drop_pending_updates=True)
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    main()
