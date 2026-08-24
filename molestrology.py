@@ -19,6 +19,13 @@ MONO_BANK_URL = "https://send.monobank.ua/"
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 
+# 🩺 СТАНДАРТНЕ МЕДИЧНЕ ЗАСТЕРЕЖЕННЯ
+MEDICAL_DISCLAIMER = (
+    "\n\n⚠️ **Важливо:** Цей бот є розважальним і не дає медичних порад! "
+    "Якщо ви помітили зміну форми, кольору чи розміру родимок, висип або біль на шкірі — "
+    "обов'язково зверніться до лікаря-дерматолога."
+)
+
 # --- ВЕБ-СЕРВЕР ДЛЯ RENDER (HEALTH CHECK) ---
 async def handle_ping(request):
     return web.Response(text="Molestrology UA is running!")
@@ -111,7 +118,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         f"✨ **Вітаю, {user_name}! Ласкаво просимо до Molestrology UA!** ✨\n\n"
-        "Оберіть режим гороскопу та надішліть мені фото (шкіри з родимками, долоні або улюбленця):",
+        "Оберіть режим гороскопу та надішліть мені фото (шкіри з родимками, долоні або улюбленця):"
+        f"{MEDICAL_DISCLAIMER}",
         reply_markup=get_mode_keyboard(),
         parse_mode="Markdown"
     )
@@ -188,7 +196,6 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         moles = data.get("moles", [])
         prediction_text = data.get("prediction", "Зірки бачать шалений магнетизм!")
 
-        # 🧠 ЗБЕРІГАЄМО ПРОГНОЗ ТА КІЛЬКІСТЬ РОДИМОК У КОНТЕКСТ КОРИСТУВАЧА
         context.user_data["last_prediction"] = prediction_text
         context.user_data["moles_count"] = len(moles)
 
@@ -219,7 +226,8 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         caption_text = (
             f"✨ **Персональний астропрогноз для {user_name}:**\n\n{prediction_text}\n\n"
-            f"💬 *Можете поставити мені будь-яке запитання щодо ваших родимок або поради у чаті!*"
+            f"💬 *Можете поставити запитання астрологу у чаті!*"
+            f"{MEDICAL_DISCLAIMER}"
         )
 
         await update.message.reply_photo(
@@ -256,7 +264,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             pass
 
-# --- ОБРОБНИК ТЕКСТОВИХ ПИТАНЬ З ПРИВ'ЯЗКОЮ ДО РОДИМОК ---
+# --- ОБРОБНИК ТЕКСТОВИХ ПИТАНЬ З ПЕРЕВІРКОЮ НА МЕДИЧНІ СИМПТОМИ ---
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
     user_name = update.effective_user.first_name or "Шукач Долі"
@@ -267,20 +275,22 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
 
     prompt = f"""
-        Ти — грайлива, дотепна, але мудра та підтримлива українська астрологиня з додатка Molestrology.
+        Ти — грайлива, дотепна, але ВІДПОВІДАЛЬНА українська астрологиня з додатка Molestrology.
         
         Контекст користувача:
         - Ім'я: {user_name}
         - Стать: {gender}
-        - Кількість виявлених родимок/точок на останньому фото: {moles_count}
-        - Останній згенерований аналіз родимок/гороскоп: "{last_prediction}"
+        - Кількість родимок на фото: {moles_count}
+        - Останній астрологічний аналіз: "{last_prediction}"
 
         Користувач запитує: "{user_text}"
 
-        Твоє завдання:
-        - Дай відповідь або пораду, ОБОРОЗ'ЯЗКОВО посилаючись на родимки користувача, їх формацію або попередній опис сузір'я з аналізу.
-        - Відповідай дотепно, із гумором та астрологічним шармом.
-        - Тримай відповідь у межах 2-4 речень.
+        КРИТИЧНО ВАЖЛИВА ІНСТРУКЦІЯ:
+        1. Якщо питання стосується МЕДИЦИНИ, ВИСИПУ, ЗМІНИ РОДИМОК, БОЛЮ, СВЕРБЕЖУ, КРОВОТЕЧІ чи ПІДОЗРІЛИХ ПЛЯМ:
+           - Обов'язково чітко наголоси, що ти астролог, а не лікар!
+           - Настійно порадь звернутися до дерматолога або сімейного лікаря. Не ставай діагнози і не давайте медичних порад!
+        2. Якщо питання звичайне або астрологічне:
+           - Дай дотепну відповідь із гумором, посилаючись на родимки або астропрогноз (2-3 речення).
     """
 
     try:
@@ -310,7 +320,6 @@ async def main():
     app.add_handler(CallbackQueryHandler(set_gender, pattern="^gender_"))
     app.add_handler(CallbackQueryHandler(show_menu_callback, pattern="^show_menu$"))
     
-    # Обробка фото та текстів
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     
