@@ -16,6 +16,9 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 MONO_BANK_URL = "https://send.monobank.ua/"
 
+# Испольуем вашу модель gemini-3.6-flash
+MODEL_NAME = "gemini-3.6-flash"
+
 client = genai.Client(api_key=GEMINI_API_KEY)
 
 MEDICAL_DISCLAIMER = (
@@ -40,8 +43,7 @@ async def start_web_server():
 def clean_text_for_tts(text: str) -> str:
     text = text.replace('*', '').replace('«', '').replace('»', '').replace('"', '')
     text = re.sub(r'[^\w\s,.!?-А-Яа-яЄєІіЇїҐґ]', ' ', text)
-    text = re.sub(r'\s+', ' ', text).strip()
-    return text
+    return re.sub(r'\s+', ' ', text).strip()
 
 def detect_gender_by_name(name: str) -> str:
     name_lower = name.lower()
@@ -136,7 +138,7 @@ async def set_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = "💘 Обрано **Любовний режим**!\nВкажіть вашу стать та надішліть фото шкіри:"
         try:
             await query.edit_message_text(text=text, reply_markup=get_gender_keyboard(), parse_mode="Markdown")
-        except:
+        except Exception:
             await query.message.reply_text(text=text, reply_markup=get_gender_keyboard(), parse_mode="Markdown")
         return
 
@@ -145,7 +147,7 @@ async def set_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = "🌟 Обрано **Загальний астропрогноз**!\nБудь ласка, вкажіть вашу стать:"
         try:
             await query.edit_message_text(text=text, reply_markup=get_gender_keyboard(), parse_mode="Markdown")
-        except:
+        except Exception:
             await query.message.reply_text(text=text, reply_markup=get_gender_keyboard(), parse_mode="Markdown")
         return
 
@@ -158,7 +160,7 @@ async def set_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         await query.edit_message_text(text=text, parse_mode="Markdown")
-    except:
+    except Exception:
         await query.message.reply_text(text=text, parse_mode="Markdown")
 
 async def generate_daily_horoscope(update: Update, context: ContextTypes.DEFAULT_TYPE, user_name: str, gender: str):
@@ -177,8 +179,10 @@ async def generate_daily_horoscope(update: Update, context: ContextTypes.DEFAULT
     """
 
     try:
-        response = client.models.generate_content(
-            model='gemini-3.6-flash',
+        # Выносим генерацию Gemini в отдельный поток через asyncio.to_thread
+        response = await asyncio.to_thread(
+            client.models.generate_content,
+            model=MODEL_NAME,
             contents=prompt
         )
         prediction_text = response.text
@@ -232,7 +236,7 @@ async def set_gender(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = f"✅ Обрано **{gender_text} стать**. Тепер надішліть фото шкіри з родимками!"
         try:
             await query.edit_message_text(text=text, parse_mode="Markdown")
-        except:
+        except Exception:
             await query.message.reply_text(text=text, parse_mode="Markdown")
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -255,8 +259,10 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         prompt = get_prompt(mode, gender, user_name)
 
-        response = client.models.generate_content(
-            model='gemini-3.6-flash',
+        # Выносим генерацию Gemini в отдельный поток
+        response = await asyncio.to_thread(
+            client.models.generate_content,
+            model=MODEL_NAME,
             contents=[image, prompt],
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
@@ -339,7 +345,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"Помилка обробки: {e}")
         try:
             await msg.edit_text(f"❌ Помилка аналізу: {e}")
-        except:
+        except Exception:
             pass
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -372,8 +378,10 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
 
     try:
-        response = client.models.generate_content(
-            model='gemini-3.6-flash',
+        # Выносим генерацию Gemini в отдельный поток
+        response = await asyncio.to_thread(
+            client.models.generate_content,
+            model=MODEL_NAME,
             contents=prompt
         )
         await update.message.reply_text(response.text, parse_mode="Markdown")
@@ -389,13 +397,14 @@ async def show_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         reply_markup=get_mode_keyboard()
     )
 
-def main():
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    
-    loop.create_task(start_web_server())
+async def post_init(application):
+    """Безопасный запуск веб-сервера aiohttp внутри единого event loop телеграм-бота"""
+    await start_web_server()
 
-    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+def main():
+    # Регистрируем post_init hook вместо создания ручного asyncio.new_event_loop()
+    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).post_init(post_init).build()
+
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(set_mode, pattern="^mode_"))
     app.add_handler(CallbackQueryHandler(set_gender, pattern="^gender_"))
